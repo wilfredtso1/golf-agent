@@ -6,12 +6,12 @@
 
 ## Next Up
 - [x] Dry-run the 5-minute demo runbook against Railway and capture expected output snippets in `DEMO.md`.
-- [x] Add DB-backed integration test for lead action staging + `CONFIRM ACTION` execution.
+- [x] Add DB-backed integration tests for lead session-management actions under immediate execution.
 - [x] Implement explicit handling for `PROCEED WITHOUT THEM` after 8h escalation.
 - [x] Add structured logging for all session state transitions.
 - [x] Add openapi docs/examples for `/api/lead-trigger`, `/api/form-response`, `/api/session-status`.
 - [x] Add machine-readable demo report script for fast go/no-go checks.
-- [ ] Remove or repurpose unused `pending_confirmations` flow now that lead session actions are immediate.
+- [x] Remove unused `pending_confirmations` runtime flow now that lead session actions are immediate.
 - [ ] Add CI target (manual workflow or nightly) for DB-backed eval scenarios (`tests/test_eval_scenarios.py`).
 
 ## DevOps / Quality

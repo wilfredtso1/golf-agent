@@ -32,7 +32,7 @@ The form is a simple web page (hosted as a static page, one per session) with:
 
 If the player is new (first time interacting with the agent), the form also collects standing profile info: name, general availability patterns, courses they generally like. This profile persists across future sessions.
 
-The form writes directly to Supabase. No NLP needed for the structured preference collection — the form handles it cleanly.
+The form submits to backend endpoints (`/api/form-context`, `/api/form-response`) and the backend persists to Supabase. No NLP needed for the structured preference collection — the form handles it cleanly.
 
 **Step 3: Agent intersects and proposes.**
 As form responses come in, the agent runs the policy engine:
@@ -76,15 +76,9 @@ The agent broadcasts relevant changes to all active players: "Heads up — the d
 I'm designing this agent to showcase specific patterns from enterprise AI agent architecture. These matter as much as the feature set.
 
 ### Deterministic Action Gates
-The agent can reason, suggest, and coordinate freely — but any action that involves a commitment requires explicit confirmation from the lead. This is enforced in CODE, not in the prompt. The LLM cannot bypass this gate.
+The agent can reason, suggest, and coordinate freely. The irreversible commitment is booking selection, which requires explicit lead confirmation in code (`CONFIRM <n>`). The LLM cannot bypass this gate.
 
-Actions requiring lead confirmation:
-- Selecting a tee time to book
-- Adding a new player to the session
-- Proceeding without an unresponsive player
-- Changing the session date or course list
-
-Implementation: every state-changing action goes through a confirmation manager. The agent proposes → lead confirms via text → code executes.
+Session-management commands (add/remove player, date/course updates) are lead-authorized but execute immediately to reduce coordination friction.
 
 ### Policy Enforcement in Code
 Hard rules enforced deterministically, not via prompt instructions:
@@ -120,7 +114,7 @@ update_session_player(session_id, player_id, updates)
   → updates a player's session-specific responses (availability, courses, status)
 
 add_player_to_session(session_id, phone, name)
-  → requires lead confirmation gate, then invites new player
+  → lead-authorized session update; invites new player immediately
 
 broadcast_message(session_id, message)
   → sends a message to all active players in the session
@@ -134,7 +128,7 @@ The LLM decides WHEN to call these tools. The tools themselves are deterministic
 ### Escalation Logic
 When the agent can't resolve something autonomously, it escalates clearly:
 - **No overlap in preferences** → texts the lead with the specific conflict and options
-- **Unresponsive player** → reminder at 4 hours (clearly from AI, not the lead), escalation to lead at 8 hours: "Haven't heard from Dave — want to proceed without him?"
+- **Unresponsive player** → reminder at 4 hours (clearly from AI, not the lead), escalation to lead at 8 hours with `PROCEED WITHOUT THEM` option
 - **No available tee times** → tells the lead, suggests alternatives (different date, time, courses)
 - **Ambiguous text messages** → asks for clarification rather than guessing
 - **Player requests something outside scope** → "I can help with coordinating tee times — for anything else you'd want to text [Lead] directly"
@@ -248,18 +242,21 @@ Keep it straightforward. Clear functions, clear flow. No complex abstractions. I
 
 ```
 golf-agent/
-├── main.py                  # FastAPI app, Twilio webhook endpoint
-├── agent.py                 # Core agent loop: context injection → LLM call → tool execution → response
-├── tools.py                 # Tool implementations (Supabase reads/writes, mock booking API)
+├── main.py                  # FastAPI app, Twilio webhook + API endpoints
+├── agent.py                 # Core agent loop and lead/player command handling
+├── tools.py                 # DB/state tools and session transition helpers
+├── booking_provider.py      # Tee-time provider selector (mock vs golfnow)
+├── golfnow_adapter.py       # GolfNow adapter scaffold (shared-catalog mapped)
+├── course_semantic.py       # Semantic course matching over shared catalog
 ├── policy_engine.py         # Deterministic policy checks (intersection, min group, deadlines)
-├── context_builder.py       # Builds the LLM prompt context from Supabase state
+├── context_builder.py       # Builds LLM context from DB state
+├── llm.py                   # LLM parsing helper (JSON mode)
 ├── twilio_helpers.py        # Send SMS, parse inbound messages
-├── config.py                # Environment variables, constants
-├── form/
-│   └── index.html           # Static form page (plain HTML + JS + Supabase client)
-├── mock_booking_api.py      # Mock tee time search results
 ├── reminders.py             # Background job for 4hr/8hr deadline checks
-├── schema.sql               # Supabase schema
+├── scripts/                 # Demo + deploy helper scripts
+├── form-design/             # Frontend form app
+├── tests/                   # Unit + DB-backed integration/eval coverage
+├── schema.sql               # Postgres schema
 └── requirements.txt
 ```
 
@@ -270,7 +267,7 @@ golf-agent/
 2. Set up Twilio account, get phone number, configure webhook URL (use ngrok for local dev)
 3. Scaffold FastAPI app with Twilio webhook endpoint
 4. Test: text the number, get an echo response back
-5. Build the form page: static HTML with checkboxes, writes to Supabase via JS client
+5. Build the form page: static frontend with checkboxes, submits to backend form endpoints
 6. Test: open form in browser, submit, verify data lands in Supabase
 
 ### Saturday Afternoon: Agent Loop (4 hours)
@@ -296,7 +293,7 @@ golf-agent/
 
 ### Sunday Afternoon: Edge Cases and Deploy (4 hours)
 22. Implement conversational adjustments: player changes availability via text, agent re-runs intersection
-23. Implement "add player" flow with lead confirmation gate
+23. Implement "add player" flow with lead authorization and immediate execution
 24. Implement reminder cron job (4hr reminder, 8hr escalation to lead)
 25. Handle: player declines, no overlap found, no tee times available
 26. Deploy to Railway
@@ -315,4 +312,4 @@ When I discuss this project in interviews, I want to be able to say:
 
 "I built a multi-user coordination agent over SMS that manages golf tee times. The lead triggers a session, the agent reaches out to each player with a structured form for preferences, runs a policy engine to find the intersection of everyone's availability and course approvals, proposes options, and hands off a booking link once confirmed.
 
-What's interesting architecturally is that the core design patterns are identical to enterprise customer support agents: deterministic action gates where the agent never commits without human approval, a policy engine enforced in code rather than prompt instructions, structured tool call interfaces for external system integration, a form-based intake for reliable structured data collection with conversational flexibility layered on top, escalation logic for unresolvable conflicts, and hub-and-spoke messaging that simulates group coordination through individual channels. The domain is fun, but the architecture is serious."
+What's interesting architecturally is that the core design patterns are identical to enterprise customer support agents: deterministic high-risk action gating (booking confirmation), a policy engine enforced in code rather than prompt instructions, structured tool call interfaces for external system integration, a form-based intake for reliable structured data collection with conversational flexibility layered on top, escalation logic for unresolvable conflicts, and hub-and-spoke messaging that simulates group coordination through individual channels. The domain is fun, but the architecture is serious."

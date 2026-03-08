@@ -14,7 +14,7 @@
   - Context assembly from DB
   - Rule-first execution with optional LLM intent extraction
   - Deterministic policy checks and action gates
-- Tee-time search: mock provider now (`mock_booking_api.py`), replaceable with GolfNow adapter.
+- Tee-time search: provider abstraction via `booking_provider.py` (mock default, GolfNow scaffold + fallback path).
 - Background jobs: reminder/escalation endpoint (`/jobs/reminders`) suitable for cron.
 - Deployment operations: Railway runbook + region management + smoke-check procedure in `DEPLOYMENT.md`.
 
@@ -37,7 +37,7 @@
 - Added reusable `golf-agent-production-shipping` skill plus repo `AGENTS.md` so future agents consistently run tests, deploy checks, and continuity doc updates.
 - Added reusable prompt templates and a 5-minute demo runbook/script (`PROMPTS.md`, `DEMO.md`, `scripts/run_demo_5min.sh`) for fast walkthroughs.
 - Verified the 5-minute demo runbook against Railway production with `DEMO_FLOW_OK` and confirmed session transition to `confirmed`.
-- Added DB-backed integration coverage for lead-action staging and `CONFIRM ACTION` add-player execution flow.
+- Added DB-backed integration coverage for lead session-management actions (add/remove/date/courses) under the immediate execution model.
 - Added explicit lead command handling for `PROCEED WITHOUT THEM` to continue proposal generation after unresponsive escalations.
 - Added structured logs for session/player status transitions in `tools.py` to improve production traceability.
 - Added concrete API example docs for lead trigger, session status, and form response flows in `README.md`.
@@ -63,7 +63,7 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added reusable production-shipping skill (`~/.codex/skills/golf-agent-production-shipping`) and repo-level `AGENTS.md` enforcement for consistent staff-level execution/handoff practices.
 - 2026-03-08: Added reusable Codex prompt templates and a deterministic 5-minute demo runbook/script for local or Railway walkthroughs.
 - 2026-03-08: Executed the 5-minute runbook against Railway production and documented expected output snapshot in `DEMO.md`.
-- 2026-03-08: Added integration test for lead-action staging + `CONFIRM ACTION` execution (local execution requires reachable pooler `DATABASE_URL`).
+- 2026-03-08: Added integration coverage for lead action flows (later superseded by immediate lead session-action execution model).
 - 2026-03-08: Implemented and unit-tested `PROCEED WITHOUT THEM` lead command behavior for escalation follow-through.
 - 2026-03-08: Added state-transition logging for session and player status changes across core write paths.
 - 2026-03-08: Added runnable API examples for `/api/lead-trigger`, `/api/session-status`, and `/api/form-response`.

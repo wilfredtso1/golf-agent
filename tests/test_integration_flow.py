@@ -164,3 +164,46 @@ def test_lead_action_stage_and_confirm_add_player_flow() -> None:
     assert joined["name"] == "Tom"
     assert consumed is not None
     assert consumed["consumed_at"] is not None
+
+
+def test_lead_action_stage_and_confirm_change_date_flow() -> None:
+    lead_phone = _random_us_phone("917")
+    invite_phone = _random_us_phone("929")
+    target_date = date.today() + timedelta(days=9)
+    new_target_date = date.today() + timedelta(days=14)
+
+    created = lead_trigger(
+        LeadTriggerPayload(
+            lead_phone=lead_phone,
+            lead_name="Integration Lead",
+            target_date=target_date,
+            candidate_courses=["Bethpage", "Marine Park"],
+            invitees=[LeadInvitee(name="Integration Dave", phone=invite_phone)],
+            send_invites=False,
+        )
+    )
+    session_id = created["session_id"]
+
+    stage_reply = _process_inbound_sms(
+        {
+            "From": lead_phone,
+            "Body": f"change date to {new_target_date.isoformat()}",
+            "MessageSid": f"itest-{uuid4().hex}",
+        }
+    )
+    token_match = re.search(r"CONFIRM ACTION (act-[a-f0-9]{6})", stage_reply, flags=re.IGNORECASE)
+    assert token_match, f"Expected confirmation token in reply, got: {stage_reply}"
+    token = token_match.group(1).lower()
+
+    confirm_reply = _process_inbound_sms(
+        {
+            "From": lead_phone,
+            "Body": f"CONFIRM ACTION {token}",
+            "MessageSid": f"itest-{uuid4().hex}",
+        }
+    )
+    assert f"moved to {new_target_date.isoformat()}" in confirm_reply.lower()
+
+    status_payload = session_status(session_id=session_id)
+    assert status_payload["session"]["target_date"] == new_target_date.isoformat()
+    assert status_payload["session"]["status"] == "collecting"

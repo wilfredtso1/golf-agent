@@ -24,3 +24,32 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+  db-integration:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.DATABASE_URL != '' }}
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      RUN_DB_INTEGRATION_TESTS: "1"
+      TWILIO_VALIDATE_SIGNATURE: "false"
+      SMS_SEND_ENABLED: "false"
+      OPENAI_API_KEY: "ci-placeholder"
+      OPENAI_MODEL: "gpt-4o-mini"
+      TWILIO_PHONE_NUMBER: "+10000000000"
+      FORM_TOKEN_SECRET: "ci-form-secret"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run DB integration tests
+        run: python -m pytest -q tests/test_integration_flow.py

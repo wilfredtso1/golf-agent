@@ -1,8 +1,8 @@
 # Golf Agent TODO
 
 ## In Progress
-- [ ] Validate lead-action confirmation flows against live Supabase data path (add/remove/date/courses).
-- [ ] Update local `DATABASE_URL` to Supabase pooler host and re-run DB-backed integration tests.
+- [ ] Validate remaining lead-action confirmation flows against live Supabase data path (remove/courses).
+- [x] Update local `DATABASE_URL` to Supabase pooler host and re-run DB-backed integration tests.
 
 ## Next Up
 - [x] Dry-run the 5-minute demo runbook against Railway and capture expected output snippets in `DEMO.md`.
@@ -18,7 +18,7 @@
 - [x] Add GitHub Actions CI to run tests on push/PR.
 - [x] Add env-example contract test to prevent missing required variables.
 - [x] Validate Railway production deployment in US East with live smoke checks.
-- [ ] Add CI job for DB-backed integration tests behind secrets/environment.
+- [x] Add CI job for DB-backed integration tests behind secrets/environment.
 
 ## Twilio Go-Live
 - [ ] Verify authenticated Twilio number can receive/send production SMS.

@@ -47,6 +47,8 @@
 - Added structured logs for session/player status transitions in `tools.py` to improve production traceability.
 - Added concrete API example docs for lead trigger, session status, and form response flows in `README.md`.
 - Added automated Railway schema-apply script (`scripts/apply_schema_railway.sh`) and wired it into deployment docs.
+- Added CI DB-integration job gated by `secrets.DATABASE_URL` to continuously validate live DB flows.
+- Expanded DB-backed integration coverage to include staged/confirmed lead date-change actions.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -64,3 +66,5 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added state-transition logging for session and player status changes across core write paths.
 - 2026-03-08: Added runnable API examples for `/api/lead-trigger`, `/api/session-status`, and `/api/form-response`.
 - 2026-03-08: Automated production schema migration command via script and updated `DEPLOYMENT.md`.
+- 2026-03-08: Added GitHub Actions DB integration workflow (secret-gated) for `tests/test_integration_flow.py`.
+- 2026-03-08: Verified local pooler `DATABASE_URL` and expanded DB integration tests (`add_player` + `change_date` confirm-action flows).

@@ -28,6 +28,20 @@ Expected result:
 - Health check passes on Railway.
 - `DEMO_FLOW_OK` prints for a full simulated round.
 
+### Verified Output Snapshot (2026-03-08)
+From:
+```bash
+./scripts/run_demo_5min.sh https://golf-agent-production.up.railway.app
+```
+
+Observed:
+- `health ok`
+- `DEMO_FLOW_OK`
+- `mid_session_status=proposing`
+- `final_session_status=confirmed`
+- booking handoff reply returned:
+  - `Confirmed option 1. Book here for the group: https://booking.mock.golf/checkout?...`
+
 ## Optional Form UX Proof
 Generate a signed form URL:
 ```bash

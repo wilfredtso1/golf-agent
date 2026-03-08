@@ -4,7 +4,7 @@
 - [ ] Validate lead-action confirmation flows against live Supabase data path (add/remove/date/courses).
 
 ## Next Up
-- [ ] Dry-run the 5-minute demo runbook against Railway and capture expected output snippets in `DEMO.md`.
+- [x] Dry-run the 5-minute demo runbook against Railway and capture expected output snippets in `DEMO.md`.
 - [ ] Add DB-backed integration test for lead action staging + `CONFIRM ACTION` execution.
 - [ ] Implement explicit handling for `PROCEED WITHOUT THEM` after 8h escalation.
 - [ ] Add structured logging for all session state transitions.

@@ -18,6 +18,7 @@ class Settings:
     sms_send_enabled: bool
     openai_api_key: str
     openai_model: str
+    tee_time_provider: str
     default_timezone: str
     form_token_secret: str
     form_token_ttl_seconds: int
@@ -53,6 +54,7 @@ SETTINGS = Settings(
     sms_send_enabled=_bool_env("SMS_SEND_ENABLED", False),
     openai_api_key=os.getenv("OPENAI_API_KEY", ""),
     openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    tee_time_provider=os.getenv("TEE_TIME_PROVIDER", "mock").strip().lower(),
     default_timezone=os.getenv("DEFAULT_TIMEZONE", "America/New_York"),
     form_token_secret=_required_env("FORM_TOKEN_SECRET"),
     form_token_ttl_seconds=int(os.getenv("FORM_TOKEN_TTL_SECONDS", "604800")),

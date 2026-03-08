@@ -51,6 +51,7 @@
 - Expanded DB-backed integration coverage to include staged/confirmed lead date-change actions.
 - Expanded DB-backed integration coverage to include all staged/confirmed lead actions (add/remove/date/courses).
 - Enriched seeded shared courses with metadata tags (region/provider) and merged metadata support in course upserts.
+- Added tee-time provider abstraction (`TEE_TIME_PROVIDER`) with `golfnow_adapter.py` scaffold and mock/GolfNow switch path.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -72,3 +73,4 @@ After each completed implementation step, update this file:
 - 2026-03-08: Verified local pooler `DATABASE_URL` and expanded DB integration tests (`add_player` + `change_date` confirm-action flows).
 - 2026-03-08: Completed DB-backed confirm-action integration coverage for `add`, `remove`, `change date`, and `change courses`.
 - 2026-03-08: Added course metadata enrichment in seed data and snapshot merge path for shared catalog quality.
+- 2026-03-08: Added provider feature flag and GolfNow adapter scaffold while preserving mock provider as default.

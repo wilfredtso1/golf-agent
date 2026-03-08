@@ -9,7 +9,7 @@ from uuid import UUID
 
 from config import SETTINGS
 from llm import LLMError, parse_intent_with_llm
-from mock_booking_api import search_tee_times
+from booking_provider import search_tee_times
 from policy_engine import evaluate_session
 from token_utils import generate_form_token
 from tools import (

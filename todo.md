@@ -33,9 +33,9 @@
 
 ## GolfNow Integration
 - [ ] Build semantic course retrieval over shared catalog for GolfNow matching.
-- [ ] Build `golfnow_adapter.py` implementing the same shape as `search_tee_times` and leveraging shared course catalog candidates.
+- [x] Build `golfnow_adapter.py` scaffold implementing the same shape as `search_tee_times`.
 - [ ] Add provider failure/retry behavior and fallback messaging.
-- [ ] Add feature flag to switch between mock and GolfNow provider.
+- [x] Add feature flag to switch between mock and GolfNow provider.
 
 ## Handoff Notes
 - Core deterministic flow is functional locally and in DB-backed smoke tests.

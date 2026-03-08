@@ -12,6 +12,7 @@ def test_env_example_contains_required_keys() -> None:
         'FORM_TOKEN_SECRET=',
         'OPENAI_API_KEY=',
         'OPENAI_MODEL=',
+        'TEE_TIME_PROVIDER=',
         'TWILIO_VALIDATE_SIGNATURE=',
         'SMS_SEND_ENABLED=',
         'FORM_BASE_URL=',

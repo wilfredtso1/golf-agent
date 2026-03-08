@@ -29,7 +29,7 @@ from tools import (
     update_session_status,
 )
 from twilio_helpers import InvalidPhoneNumber, normalize_phone, send_sms, validate_twilio_signature
-from mock_booking_api import search_tee_times
+from booking_provider import search_tee_times
 from reminders import run_reminder_cycle
 
 logger = logging.getLogger("golf-agent")

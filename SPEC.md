@@ -154,10 +154,10 @@ Each LLM call includes:
 ### Messaging: Twilio SMS
 Individual SMS channels between the agent and each player. Hub-and-spoke: agent is the center, broadcasts group-relevant updates to all active players. Players text the agent individually.
 
-### Form: Simple Static Web Page
-One form page per session, hosted as a static site. URL includes a session_id and player_id as query params so the form submission writes to the correct Supabase row.
+### Form: Static Frontend App
+One form page per session, hosted as a static frontend app. URL includes a signed `token` query param that encodes session/player identity and is verified server-side.
 
-Tech: plain HTML + vanilla JS. No framework needed. The form POSTs to a FastAPI endpoint (`/api/form-response`) with the session_id, player_id, and selections. The server validates and writes to Supabase using the service role key. This keeps all database writes going through the server — no direct client-to-Supabase access, no RLS needed, and consistent with the "policy enforcement in code" principle.
+Tech: frontend app (`form-design`) calls backend endpoints (`/api/form-context`, `/api/form-response`). The server validates token + payload and writes to Supabase using the service role key. This keeps all database writes going through the server — no direct client-to-Supabase access, no RLS required for form writes, and consistent with the "policy enforcement in code" principle.
 
 The form page shows:
 - "Are you in for [date]?" — Yes / No

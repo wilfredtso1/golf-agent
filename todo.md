@@ -10,6 +10,7 @@
 - [ ] Add openapi docs/examples for `/api/lead-trigger`, `/api/form-response`, `/api/session-status`.
 
 ## DevOps / Quality
+- [x] Add repo-level `AGENTS.md` guidance and reusable production shipping skill for future agents.
 - [ ] Automate production schema migration step (instead of manual `railway run`).
 - [x] Create deployment runbook (`DEPLOYMENT.md`).
 - [x] Add GitHub Actions CI to run tests on push/PR.

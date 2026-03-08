@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import date
 from typing import Optional
 from uuid import UUID
 
 from psycopg.types.json import Jsonb
+
+logger = logging.getLogger("golf-agent")
+
+
+def _get_session_status(cur, session_id: UUID) -> str | None:
+    cur.execute("SELECT status FROM sessions WHERE id = %s LIMIT 1", (session_id,))
+    row = cur.fetchone()
+    return row["status"] if row else None
 
 
 def ensure_courses_table(cur) -> None:
@@ -338,6 +347,15 @@ def update_session_player(
     approved_courses: Optional[list[str]] = None,
     available_time_blocks: Optional[list[str]] = None,
 ) -> None:
+    previous_status: str | None = None
+    if status is not None:
+        cur.execute(
+            "SELECT status FROM session_players WHERE session_id = %s AND player_id = %s LIMIT 1",
+            (session_id, player_id),
+        )
+        row = cur.fetchone()
+        previous_status = row["status"] if row else None
+
     updates: list[str] = []
     values: list[object] = []
 
@@ -364,10 +382,26 @@ def update_session_player(
         f"UPDATE session_players SET {', '.join(updates)} WHERE session_id = %s AND player_id = %s",
         tuple(values),
     )
+    if status is not None and previous_status != status:
+        logger.info(
+            "player_status_transition session_id=%s player_id=%s from=%s to=%s source=update_session_player",
+            session_id,
+            player_id,
+            previous_status,
+            status,
+        )
 
 
 def update_session_status(cur, session_id: UUID, status: str) -> None:
+    previous_status = _get_session_status(cur, session_id)
     cur.execute("UPDATE sessions SET status = %s WHERE id = %s", (status, session_id))
+    if previous_status != status:
+        logger.info(
+            "session_status_transition session_id=%s from=%s to=%s source=update_session_status",
+            session_id,
+            previous_status,
+            status,
+        )
 
 
 def ensure_confirmation_table(cur) -> None:
@@ -491,7 +525,14 @@ def remove_player_from_session_by_name(cur, *, session_id: UUID, name: str) -> b
 
 
 def update_session_date(cur, *, session_id: UUID, target_date: date) -> None:
+    previous_status = _get_session_status(cur, session_id)
     cur.execute("UPDATE sessions SET target_date = %s, status = 'collecting' WHERE id = %s", (target_date, session_id))
+    if previous_status != "collecting":
+        logger.info(
+            "session_status_transition session_id=%s from=%s to=collecting source=update_session_date",
+            session_id,
+            previous_status,
+        )
     cur.execute(
         """
         UPDATE session_players
@@ -508,10 +549,17 @@ def update_session_date(cur, *, session_id: UUID, target_date: date) -> None:
 
 
 def update_session_courses(cur, *, session_id: UUID, candidate_courses: list[str]) -> None:
+    previous_status = _get_session_status(cur, session_id)
     cur.execute(
         "UPDATE sessions SET candidate_courses = %s, status = 'collecting' WHERE id = %s",
         (Jsonb(candidate_courses), session_id),
     )
+    if previous_status != "collecting":
+        logger.info(
+            "session_status_transition session_id=%s from=%s to=collecting source=update_session_courses",
+            session_id,
+            previous_status,
+        )
     cur.execute(
         """
         UPDATE session_players

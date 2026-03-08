@@ -9,7 +9,7 @@
 - [x] Add DB-backed integration test for lead action staging + `CONFIRM ACTION` execution.
 - [x] Implement explicit handling for `PROCEED WITHOUT THEM` after 8h escalation.
 - [x] Add structured logging for all session state transitions.
-- [ ] Add openapi docs/examples for `/api/lead-trigger`, `/api/form-response`, `/api/session-status`.
+- [x] Add openapi docs/examples for `/api/lead-trigger`, `/api/form-response`, `/api/session-status`.
 
 ## DevOps / Quality
 - [x] Add repo-level `AGENTS.md` guidance and reusable production shipping skill for future agents.

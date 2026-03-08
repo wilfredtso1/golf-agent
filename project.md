@@ -45,6 +45,7 @@
 - Added DB-backed integration coverage for lead-action staging and `CONFIRM ACTION` add-player execution flow.
 - Added explicit lead command handling for `PROCEED WITHOUT THEM` to continue proposal generation after unresponsive escalations.
 - Added structured logs for session/player status transitions in `tools.py` to improve production traceability.
+- Added concrete API example docs for lead trigger, session status, and form response flows in `README.md`.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -60,3 +61,4 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added integration test for lead-action staging + `CONFIRM ACTION` execution (local execution requires reachable pooler `DATABASE_URL`).
 - 2026-03-08: Implemented and unit-tested `PROCEED WITHOUT THEM` lead command behavior for escalation follow-through.
 - 2026-03-08: Added state-transition logging for session and player status changes across core write paths.
+- 2026-03-08: Added runnable API examples for `/api/lead-trigger`, `/api/session-status`, and `/api/form-response`.

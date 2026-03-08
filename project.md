@@ -53,6 +53,7 @@
 - Enriched seeded shared courses with metadata tags (region/provider) and merged metadata support in course upserts.
 - Added tee-time provider abstraction (`TEE_TIME_PROVIDER`) with `golfnow_adapter.py` scaffold and mock/GolfNow switch path.
 - Added provider fallback behavior so GolfNow empty/error results automatically fall back to mock tee-time search.
+- Added semantic course matching utilities and wired shared-catalog mapping into the GolfNow adapter scaffold.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -76,3 +77,4 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added course metadata enrichment in seed data and snapshot merge path for shared catalog quality.
 - 2026-03-08: Added provider feature flag and GolfNow adapter scaffold while preserving mock provider as default.
 - 2026-03-08: Added GolfNow->mock fallback handling with tests for empty/error provider responses.
+- 2026-03-08: Added semantic course resolution over shared catalog for GolfNow mapping prep.

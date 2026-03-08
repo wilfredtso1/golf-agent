@@ -32,7 +32,7 @@
 - [x] Add course metadata enrichment (location, tee-sheet provider id, borough/region tags).
 
 ## GolfNow Integration
-- [ ] Build semantic course retrieval over shared catalog for GolfNow matching.
+- [x] Build semantic course retrieval over shared catalog for GolfNow matching.
 - [x] Build `golfnow_adapter.py` scaffold implementing the same shape as `search_tee_times`.
 - [x] Add provider failure/retry behavior and fallback messaging.
 - [x] Add feature flag to switch between mock and GolfNow provider.

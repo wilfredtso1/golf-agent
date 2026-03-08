@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import random
-import re
 from datetime import date, timedelta
 from uuid import uuid4
 
@@ -81,7 +80,7 @@ def test_end_to_end_proposal_and_confirm_flow() -> None:
     assert final_status_payload["session"]["status"] == "confirmed"
 
 
-def test_lead_action_stage_and_confirm_add_player_flow() -> None:
+def test_lead_action_add_player_flow() -> None:
     lead_phone = _random_us_phone("917")
     invite_phone = _random_us_phone("929")
     new_player_phone = _random_us_phone("646")
@@ -99,41 +98,14 @@ def test_lead_action_stage_and_confirm_add_player_flow() -> None:
     )
     session_id = created["session_id"]
 
-    stage_reply = _process_inbound_sms(
+    add_reply = _process_inbound_sms(
         {
             "From": lead_phone,
             "Body": f"add Tom {new_player_phone}",
             "MessageSid": f"itest-{uuid4().hex}",
         }
     )
-    token_match = re.search(r"CONFIRM ACTION (act-[a-f0-9]{6})", stage_reply, flags=re.IGNORECASE)
-    assert token_match, f"Expected confirmation token in reply, got: {stage_reply}"
-    token = token_match.group(1).lower()
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT action_type, payload, consumed_at
-                FROM pending_confirmations
-                WHERE token = %s
-                """,
-                (token,),
-            )
-            pending = cur.fetchone()
-    assert pending is not None
-    assert pending["action_type"] == "add_player"
-    assert pending["payload"]["phone"] == new_player_phone
-    assert pending["consumed_at"] is None
-
-    confirm_reply = _process_inbound_sms(
-        {
-            "From": lead_phone,
-            "Body": f"CONFIRM ACTION {token}",
-            "MessageSid": f"itest-{uuid4().hex}",
-        }
-    )
-    assert "player added" in confirm_reply.lower()
+    assert "player added" in add_reply.lower()
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -149,24 +121,12 @@ def test_lead_action_stage_and_confirm_add_player_flow() -> None:
             )
             joined = cur.fetchone()
 
-            cur.execute(
-                """
-                SELECT consumed_at
-                FROM pending_confirmations
-                WHERE token = %s
-                """,
-                (token,),
-            )
-            consumed = cur.fetchone()
-
     assert joined is not None
     assert joined["status"] == "invited"
     assert joined["name"] == "Tom"
-    assert consumed is not None
-    assert consumed["consumed_at"] is not None
 
 
-def test_lead_action_stage_and_confirm_change_date_flow() -> None:
+def test_lead_action_change_date_flow() -> None:
     lead_phone = _random_us_phone("917")
     invite_phone = _random_us_phone("929")
     target_date = date.today() + timedelta(days=9)
@@ -184,32 +144,21 @@ def test_lead_action_stage_and_confirm_change_date_flow() -> None:
     )
     session_id = created["session_id"]
 
-    stage_reply = _process_inbound_sms(
+    change_reply = _process_inbound_sms(
         {
             "From": lead_phone,
             "Body": f"change date to {new_target_date.isoformat()}",
             "MessageSid": f"itest-{uuid4().hex}",
         }
     )
-    token_match = re.search(r"CONFIRM ACTION (act-[a-f0-9]{6})", stage_reply, flags=re.IGNORECASE)
-    assert token_match, f"Expected confirmation token in reply, got: {stage_reply}"
-    token = token_match.group(1).lower()
-
-    confirm_reply = _process_inbound_sms(
-        {
-            "From": lead_phone,
-            "Body": f"CONFIRM ACTION {token}",
-            "MessageSid": f"itest-{uuid4().hex}",
-        }
-    )
-    assert f"moved to {new_target_date.isoformat()}" in confirm_reply.lower()
+    assert f"moved to {new_target_date.isoformat()}" in change_reply.lower()
 
     status_payload = session_status(session_id=session_id)
     assert status_payload["session"]["target_date"] == new_target_date.isoformat()
     assert status_payload["session"]["status"] == "collecting"
 
 
-def test_lead_action_stage_and_confirm_remove_player_flow() -> None:
+def test_lead_action_remove_player_flow() -> None:
     lead_phone = _random_us_phone("917")
     invite_phone = _random_us_phone("929")
     target_date = date.today() + timedelta(days=11)
@@ -226,25 +175,14 @@ def test_lead_action_stage_and_confirm_remove_player_flow() -> None:
     )
     session_id = created["session_id"]
 
-    stage_reply = _process_inbound_sms(
+    remove_reply = _process_inbound_sms(
         {
             "From": lead_phone,
             "Body": "remove Integration Dave",
             "MessageSid": f"itest-{uuid4().hex}",
         }
     )
-    token_match = re.search(r"CONFIRM ACTION (act-[a-f0-9]{6})", stage_reply, flags=re.IGNORECASE)
-    assert token_match, f"Expected confirmation token in reply, got: {stage_reply}"
-    token = token_match.group(1).lower()
-
-    confirm_reply = _process_inbound_sms(
-        {
-            "From": lead_phone,
-            "Body": f"CONFIRM ACTION {token}",
-            "MessageSid": f"itest-{uuid4().hex}",
-        }
-    )
-    assert "removed integration dave" in confirm_reply.lower()
+    assert "removed integration dave" in remove_reply.lower()
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -261,7 +199,7 @@ def test_lead_action_stage_and_confirm_remove_player_flow() -> None:
     assert removed_row is None
 
 
-def test_lead_action_stage_and_confirm_change_courses_flow() -> None:
+def test_lead_action_change_courses_flow() -> None:
     lead_phone = _random_us_phone("917")
     invite_phone = _random_us_phone("929")
     target_date = date.today() + timedelta(days=12)
@@ -279,25 +217,14 @@ def test_lead_action_stage_and_confirm_change_courses_flow() -> None:
     )
     session_id = created["session_id"]
 
-    stage_reply = _process_inbound_sms(
+    change_reply = _process_inbound_sms(
         {
             "From": lead_phone,
             "Body": f"change courses: {', '.join(new_courses)}",
             "MessageSid": f"itest-{uuid4().hex}",
         }
     )
-    token_match = re.search(r"CONFIRM ACTION (act-[a-f0-9]{6})", stage_reply, flags=re.IGNORECASE)
-    assert token_match, f"Expected confirmation token in reply, got: {stage_reply}"
-    token = token_match.group(1).lower()
-
-    confirm_reply = _process_inbound_sms(
-        {
-            "From": lead_phone,
-            "Body": f"CONFIRM ACTION {token}",
-            "MessageSid": f"itest-{uuid4().hex}",
-        }
-    )
-    assert "candidate courses updated" in confirm_reply.lower()
+    assert "candidate courses updated" in change_reply.lower()
 
     status_payload = session_status(session_id=session_id)
     assert status_payload["session"]["candidate_courses"] == new_courses

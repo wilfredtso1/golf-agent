@@ -128,6 +128,12 @@ CONFIRM 1
 
 The first message stages the pick; `CONFIRM <n>` executes the commitment.
 
+Session-management commands from the lead execute immediately (no extra confirmation):
+- `add <name> <phone>`
+- `remove <name>`
+- `change date to YYYY-MM-DD`
+- `change courses: <course1>, <course2>, ...`
+
 ## Tests
 
 ```bash
@@ -161,6 +167,12 @@ Quick guided runbook (health + flow + course snapshot):
 ```
 
 See [DEMO.md](DEMO.md) for the full 5-minute walkthrough.
+
+Machine-readable demo readiness report:
+
+```bash
+python3 scripts/demo_report.py --base-url http://127.0.0.1:8010 --pretty
+```
 
 Default seeded demo courses:
 `Maple Moor, Silver Lake, La Tourette, Dyker, Pelham, Saxon Woods, Forest Hills`

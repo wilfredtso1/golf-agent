@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import secrets
 from datetime import date
 from typing import Optional
 from uuid import UUID
@@ -406,77 +405,6 @@ def update_session_status(cur, session_id: UUID, status: str) -> None:
             previous_status,
             status,
         )
-
-
-def ensure_confirmation_table(cur) -> None:
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pending_confirmations (
-          token TEXT PRIMARY KEY,
-          session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-          lead_player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-          action_type TEXT NOT NULL,
-          payload JSONB NOT NULL,
-          expires_at TIMESTAMPTZ NOT NULL,
-          consumed_at TIMESTAMPTZ,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-        """
-    )
-
-
-def create_pending_confirmation(
-    cur,
-    *,
-    session_id: UUID,
-    lead_player_id: UUID,
-    action_type: str,
-    payload: dict[str, object],
-    ttl_minutes: int = 30,
-) -> str:
-    ensure_confirmation_table(cur)
-    token = f"act-{secrets.token_hex(3)}"
-    cur.execute(
-        """
-        INSERT INTO pending_confirmations (token, session_id, lead_player_id, action_type, payload, expires_at)
-        VALUES (%s, %s, %s, %s, %s, now() + (%s || ' minutes')::interval)
-        """,
-        (token, session_id, lead_player_id, action_type, Jsonb(payload), ttl_minutes),
-    )
-    return token
-
-
-def consume_pending_confirmation(
-    cur,
-    *,
-    session_id: UUID,
-    lead_player_id: UUID,
-    token: str,
-) -> dict[str, object] | None:
-    ensure_confirmation_table(cur)
-    cur.execute(
-        """
-        SELECT token, action_type, payload
-        FROM pending_confirmations
-        WHERE token = %s
-          AND session_id = %s
-          AND lead_player_id = %s
-          AND consumed_at IS NULL
-          AND expires_at > now()
-        LIMIT 1
-        """,
-        (token, session_id, lead_player_id),
-    )
-    row = cur.fetchone()
-    if not row:
-        return None
-
-    cur.execute("UPDATE pending_confirmations SET consumed_at = now() WHERE token = %s", (token,))
-    return {
-        "token": row["token"],
-        "action_type": row["action_type"],
-        "payload": row["payload"] or {},
-    }
 
 
 def add_or_get_player_by_phone(cur, *, phone: str, name: str) -> UUID:

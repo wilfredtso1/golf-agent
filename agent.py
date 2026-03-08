@@ -15,8 +15,6 @@ from token_utils import generate_form_token
 from tools import (
     add_or_get_player_by_phone,
     add_player_to_session,
-    consume_pending_confirmation,
-    create_pending_confirmation,
     get_latest_proposals,
     get_player_name,
     get_session_state,
@@ -50,7 +48,6 @@ _ADD_PATTERN = re.compile(r"^add\s+(.+?)\s+(\+?[\d\s\-\(\)]{8,})$", re.IGNORECAS
 _REMOVE_PATTERN = re.compile(r"^remove\s+(.+)$", re.IGNORECASE)
 _DATE_PATTERN = re.compile(r"^(?:change|move|set)\s+date\s+(?:to\s+)?(\d{4}-\d{2}-\d{2})$", re.IGNORECASE)
 _COURSE_PATTERN = re.compile(r"^(?:change|set|update)\s+courses?\s*[:\-]?\s*(.+)$", re.IGNORECASE)
-_CONFIRM_ACTION_PATTERN = re.compile(r"^confirm\s+action\s+(act-[a-f0-9]{6})$", re.IGNORECASE)
 _PROCEED_WITHOUT_PATTERN = re.compile(r"^proceed\s+without\s+them\b", re.IGNORECASE)
 
 
@@ -153,103 +150,6 @@ def _ensure_proposals(cur, session: dict[str, object], policy: dict[str, object]
     return proposals
 
 
-def _stage_lead_action(cur, *, session_id: UUID, lead_id: UUID, action_type: str, payload: dict[str, object], instruction: str) -> AgentResult:
-    token = create_pending_confirmation(
-        cur,
-        session_id=session_id,
-        lead_player_id=lead_id,
-        action_type=action_type,
-        payload=payload,
-    )
-    return AgentResult(reply_text=f"{instruction} To execute, reply exactly: CONFIRM ACTION {token}")
-
-
-def _execute_lead_action(cur, *, session: dict[str, object], player_name: str, token: str) -> AgentResult:
-    confirmation = consume_pending_confirmation(
-        cur,
-        session_id=session["id"],
-        lead_player_id=session["lead_player_id"],
-        token=token,
-    )
-    if not confirmation:
-        return AgentResult(reply_text="That action confirmation token is invalid or expired.")
-
-    action_type = confirmation["action_type"]
-    payload = confirmation["payload"]
-
-    if action_type == "add_player":
-        name = str(payload.get("name", "")).strip()
-        phone = str(payload.get("phone", "")).strip()
-        if not name or not phone:
-            return AgentResult(reply_text="Couldn't execute add-player action due to invalid payload.")
-
-        new_player_id = add_or_get_player_by_phone(cur, phone=phone, name=name)
-        inserted = add_player_to_session(cur, session_id=session["id"], player_id=new_player_id)
-        update_session_status(cur, session["id"], "collecting")
-
-        form_token = generate_form_token(str(session["id"]), str(new_player_id))
-        form_link = _build_form_url(form_token)
-        invite_message = (
-            f"Hey {name}, this is Golf Agent helping {player_name} coordinate a round on "
-            f"{session['target_date'].isoformat()}. Please submit your availability: {form_link}"
-        )
-        broadcast = f"Lead update: {name} was added to this session."
-        reply = "Player added and invited." if inserted else "Player already existed in this session; invite re-sent."
-        return AgentResult(
-            reply_text=reply,
-            should_broadcast=True,
-            broadcast_text=broadcast,
-            direct_messages=[(new_player_id, invite_message)],
-            updated=True,
-        )
-
-    if action_type == "remove_player":
-        name = str(payload.get("name", "")).strip()
-        if not name:
-            return AgentResult(reply_text="Couldn't execute remove-player action due to invalid payload.")
-        lead_name = get_player_name(cur, session["lead_player_id"])
-        if name.lower() == lead_name.lower():
-            return AgentResult(reply_text="Lead cannot be removed from their own session.")
-        removed = remove_player_from_session_by_name(cur, session_id=session["id"], name=name)
-        if not removed:
-            return AgentResult(reply_text=f"I couldn't find {name} in this session.")
-        update_session_status(cur, session["id"], "collecting")
-        return AgentResult(
-            reply_text=f"Removed {name} from the session.",
-            should_broadcast=True,
-            broadcast_text=f"Lead update: {name} was removed from this session.",
-            updated=True,
-        )
-
-    if action_type == "change_date":
-        raw_date = str(payload.get("target_date", ""))
-        try:
-            parsed_date = date.fromisoformat(raw_date)
-        except ValueError:
-            return AgentResult(reply_text="Couldn't execute date change due to invalid date payload.")
-        update_session_date(cur, session_id=session["id"], target_date=parsed_date)
-        return AgentResult(
-            reply_text=f"Session date moved to {parsed_date.isoformat()} and players were re-polled.",
-            should_broadcast=True,
-            broadcast_text=f"Heads up: the round date moved to {parsed_date.isoformat()}. Please re-submit availability.",
-            updated=True,
-        )
-
-    if action_type == "change_courses":
-        courses = [c for c in payload.get("candidate_courses", []) if isinstance(c, str) and c.strip()]
-        if not courses:
-            return AgentResult(reply_text="Couldn't execute course change due to invalid course payload.")
-        update_session_courses(cur, session_id=session["id"], candidate_courses=courses)
-        return AgentResult(
-            reply_text="Candidate courses updated and players were re-polled.",
-            should_broadcast=True,
-            broadcast_text=f"Heads up: candidate courses were updated to {', '.join(courses)}. Please re-submit availability.",
-            updated=True,
-        )
-
-    return AgentResult(reply_text="Unknown action type; nothing executed.")
-
-
 def process_inbound_message(cur, context: dict[str, object], inbound_body: str) -> AgentResult:
     message = inbound_body.strip()
     message_lower = message.lower()
@@ -271,12 +171,6 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
     player_id = player["id"]
     lead_id = session["lead_player_id"]
     candidate_courses = [c for c in session.get("candidate_courses") or [] if isinstance(c, str)]
-
-    confirm_action_match = _CONFIRM_ACTION_PATTERN.match(message)
-    if confirm_action_match:
-        if not is_lead:
-            return AgentResult(reply_text="Only the lead can confirm session-changing actions.")
-        return _execute_lead_action(cur, session=session, player_name=player_name, token=confirm_action_match.group(1).lower())
 
     # Deterministic confirmation gate for final tee-time commitment.
     confirm_match = re.match(r"^confirm\s+(\d{1,2})\b", message_lower)
@@ -340,13 +234,22 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
             name = " ".join(raw_name.split()).strip()
             if not name:
                 return AgentResult(reply_text="Please include the new player's name.")
-            return _stage_lead_action(
-                cur,
-                session_id=session_id,
-                lead_id=lead_id,
-                action_type="add_player",
-                payload={"name": name, "phone": phone},
-                instruction=f"Ready to add {name} ({phone}) and send their invite link.",
+            new_player_id = add_or_get_player_by_phone(cur, phone=phone, name=name)
+            inserted = add_player_to_session(cur, session_id=session_id, player_id=new_player_id)
+            update_session_status(cur, session_id, "collecting")
+            form_token = generate_form_token(str(session_id), str(new_player_id))
+            form_link = _build_form_url(form_token)
+            invite_message = (
+                f"Hey {name}, this is Golf Agent helping {player_name} coordinate a round on "
+                f"{session['target_date'].isoformat()}. Please submit your availability: {form_link}"
+            )
+            reply = "Player added and invited." if inserted else "Player already in this session; invite re-sent."
+            return AgentResult(
+                reply_text=reply,
+                should_broadcast=True,
+                broadcast_text=f"Lead update: {name} was added to this session.",
+                direct_messages=[(new_player_id, invite_message)],
+                updated=True,
             )
 
         remove_match = _REMOVE_PATTERN.match(message)
@@ -354,25 +257,33 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
             name = " ".join(remove_match.group(1).split()).strip()
             if not name:
                 return AgentResult(reply_text="Please include the player name to remove.")
-            return _stage_lead_action(
-                cur,
-                session_id=session_id,
-                lead_id=lead_id,
-                action_type="remove_player",
-                payload={"name": name},
-                instruction=f"Ready to remove {name} from this session.",
+            lead_name = get_player_name(cur, lead_id)
+            if name.lower() == lead_name.lower():
+                return AgentResult(reply_text="Lead cannot be removed from their own session.")
+            removed = remove_player_from_session_by_name(cur, session_id=session_id, name=name)
+            if not removed:
+                return AgentResult(reply_text=f"I couldn't find {name} in this session.")
+            update_session_status(cur, session_id, "collecting")
+            return AgentResult(
+                reply_text=f"Removed {name} from the session.",
+                should_broadcast=True,
+                broadcast_text=f"Lead update: {name} was removed from this session.",
+                updated=True,
             )
 
         date_match = _DATE_PATTERN.match(message)
         if date_match:
-            target_date = date_match.group(1)
-            return _stage_lead_action(
-                cur,
-                session_id=session_id,
-                lead_id=lead_id,
-                action_type="change_date",
-                payload={"target_date": target_date},
-                instruction=f"Ready to move this round to {target_date} and re-poll players.",
+            raw_date = date_match.group(1)
+            try:
+                parsed_date = date.fromisoformat(raw_date)
+            except ValueError:
+                return AgentResult(reply_text="That date format looks invalid. Use YYYY-MM-DD.")
+            update_session_date(cur, session_id=session_id, target_date=parsed_date)
+            return AgentResult(
+                reply_text=f"Session date moved to {parsed_date.isoformat()} and players were re-polled.",
+                should_broadcast=True,
+                broadcast_text=f"Heads up: the round date moved to {parsed_date.isoformat()}. Please re-submit availability.",
+                updated=True,
             )
 
         course_match = _COURSE_PATTERN.match(message)
@@ -380,13 +291,12 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
             courses = [c.strip() for c in course_match.group(1).split(",") if c.strip()]
             if not courses:
                 return AgentResult(reply_text="Please provide at least one course when updating courses.")
-            return _stage_lead_action(
-                cur,
-                session_id=session_id,
-                lead_id=lead_id,
-                action_type="change_courses",
-                payload={"candidate_courses": courses},
-                instruction=f"Ready to update candidate courses to: {', '.join(courses)}.",
+            update_session_courses(cur, session_id=session_id, candidate_courses=courses)
+            return AgentResult(
+                reply_text="Candidate courses updated and players were re-polled.",
+                should_broadcast=True,
+                broadcast_text=f"Heads up: candidate courses were updated to {', '.join(courses)}. Please re-submit availability.",
+                updated=True,
             )
 
     # Lead can stage an option pick, but must explicitly CONFIRM to execute it.

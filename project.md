@@ -27,12 +27,7 @@
   - lead pick staging
   - `CONFIRM <n>` booking handoff gate
 - Working reminder/escalation engine (4h reminder, 8h escalation).
-- Added durable lead-action gate with `pending_confirmations` table support:
-  - add player
-  - remove player
-  - change date
-  - change courses
-  - all executed only after `CONFIRM ACTION <token>`.
+- Lead-managed session actions now execute immediately (add/remove player, change date/courses) to reduce friction; only final booking remains gated by `CONFIRM <n>`.
 - GitHub + Railway deployment path now operational; production smoke checks pass.
 - Added persistent `courses` catalog updated from proposal generation (latest price + booking URL snapshots).
 - Railway production service is running in US East (`us-east4-eqdc4a`) with `/health` and `/dev/simulate-sms` returning 200.
@@ -54,6 +49,8 @@
 - Added tee-time provider abstraction (`TEE_TIME_PROVIDER`) with `golfnow_adapter.py` scaffold and mock/GolfNow switch path.
 - Added provider fallback behavior so GolfNow empty/error results automatically fall back to mock tee-time search.
 - Added semantic course matching utilities and wired shared-catalog mapping into the GolfNow adapter scaffold.
+- Added OpenAPI-friendly endpoint metadata/examples and a JSON demo-readiness report script (`scripts/demo_report.py`).
+- Added DB-backed eval harness (`tests/test_eval_scenarios.py`) and validated it against the updated autonomous session-management model.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -78,3 +75,6 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added provider feature flag and GolfNow adapter scaffold while preserving mock provider as default.
 - 2026-03-08: Added GolfNow->mock fallback handling with tests for empty/error provider responses.
 - 2026-03-08: Added semantic course resolution over shared catalog for GolfNow mapping prep.
+- 2026-03-08: Added endpoint OpenAPI metadata and a machine-readable demo report command for quick go/no-go validation.
+- 2026-03-08: Updated lead action model to immediate execution (session management) while preserving final booking confirmation gate.
+- 2026-03-08: Added and validated DB-backed eval scenarios (`tests/test_eval_scenarios.py`) with escalated test run.

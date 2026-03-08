@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 import httpx
@@ -42,6 +41,7 @@ def parse_intent_with_llm(context: dict[str, object], inbound_body: str) -> dict
     payload = {
         "model": SETTINGS.openai_model,
         "temperature": 0,
+        "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(user_prompt)},
@@ -71,11 +71,8 @@ def parse_intent_with_llm(context: dict[str, object], inbound_body: str) -> dict
     if not content:
         return None
 
-    match = re.search(r"\{.*\}", content, re.DOTALL)
-    raw_json = match.group(0) if match else content
-
     try:
-        parsed = json.loads(raw_json)
+        parsed = json.loads(content)
     except json.JSONDecodeError:
         return None
 

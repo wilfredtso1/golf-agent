@@ -56,25 +56,28 @@ class PlayerProfileUpdate(BaseModel):
 
 
 class FormResponsePayload(BaseModel):
-    token: str
-    is_attending: bool
-    approved_courses: list[str] = Field(default_factory=list)
-    available_time_blocks: list[str] = Field(default_factory=list)
+    token: str = Field(..., json_schema_extra={"example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."})
+    is_attending: bool = Field(..., json_schema_extra={"example": True})
+    approved_courses: list[str] = Field(default_factory=list, json_schema_extra={"example": ["Maple Moor"]})
+    available_time_blocks: list[str] = Field(default_factory=list, json_schema_extra={"example": ["late_morning"]})
     player_profile: Optional[PlayerProfileUpdate] = None
 
 
 class LeadInvitee(BaseModel):
-    name: str
-    phone: str
+    name: str = Field(..., json_schema_extra={"example": "Dave"})
+    phone: str = Field(..., json_schema_extra={"example": "+19175550123"})
 
 
 class LeadTriggerPayload(BaseModel):
-    lead_phone: str
-    lead_name: Optional[str] = None
-    target_date: date
-    candidate_courses: list[str] = Field(default_factory=list)
+    lead_phone: str = Field(..., json_schema_extra={"example": "+19175550100"})
+    lead_name: Optional[str] = Field(default=None, json_schema_extra={"example": "Will"})
+    target_date: date = Field(..., json_schema_extra={"example": "2026-03-15"})
+    candidate_courses: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={"example": ["Maple Moor", "Silver Lake"]},
+    )
     invitees: list[LeadInvitee] = Field(default_factory=list)
-    send_invites: bool = True
+    send_invites: bool = Field(default=True, json_schema_extra={"example": False})
 
 
 class DevSimulateSmsPayload(BaseModel):
@@ -117,7 +120,11 @@ def run_reminders_job() -> dict[str, object]:
     return {"ok": True, **result}
 
 
-@app.get("/api/session-status")
+@app.get(
+    "/api/session-status",
+    summary="Get session status, policy overlap, players, and proposals",
+    response_description="Current session state and matching proposals",
+)
 def session_status(session_id: UUID) -> dict[str, object]:
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -158,7 +165,11 @@ def session_status(session_id: UUID) -> dict[str, object]:
             }
 
 
-@app.post("/api/lead-trigger")
+@app.post(
+    "/api/lead-trigger",
+    summary="Create a session and invite players",
+    response_description="Session creation result and invite send results",
+)
 def lead_trigger(payload: LeadTriggerPayload) -> dict[str, object]:
     cleaned_courses = [course.strip() for course in payload.candidate_courses if course.strip()]
     if not cleaned_courses:
@@ -399,7 +410,11 @@ def get_form_context(token: str = Query(..., min_length=20)) -> dict[str, object
     }
 
 
-@app.post("/api/form-response")
+@app.post(
+    "/api/form-response",
+    summary="Submit invitee form response using signed token",
+    response_description="Persisted attendance and preference update result",
+)
 def submit_form_response(payload: FormResponsePayload) -> dict[str, object]:
     session_id, player_id = _parse_token_ids(payload.token)
 

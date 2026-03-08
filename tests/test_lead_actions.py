@@ -1,0 +1,83 @@
+from datetime import date
+from uuid import uuid4
+
+import agent
+
+
+def _context(*, is_lead: bool = True) -> dict[str, object]:
+    lead_id = uuid4()
+    player_id = lead_id if is_lead else uuid4()
+    return {
+        "session": {
+            "id": uuid4(),
+            "lead_player_id": lead_id,
+            "target_date": date(2026, 3, 22),
+            "candidate_courses": ["Bethpage", "Marine Park"],
+            "players": [],
+        },
+        "player": {
+            "id": player_id,
+            "name": "Will" if is_lead else "Dave",
+            "is_lead": is_lead,
+            "session_state": None,
+            "profile": {},
+        },
+        "recent_messages": [],
+    }
+
+
+def test_non_lead_cannot_confirm_action() -> None:
+    result = agent.process_inbound_message(None, _context(is_lead=False), "CONFIRM ACTION act-abc123")
+    assert "only the lead" in result.reply_text.lower()
+
+
+def test_lead_stages_add_player_action(monkeypatch) -> None:
+    monkeypatch.setattr(agent, "create_pending_confirmation", lambda *args, **kwargs: "act-abc123")
+    result = agent.process_inbound_message(None, _context(is_lead=True), "add Tom +19175550123")
+
+    assert "confirm action act-abc123" in result.reply_text.lower()
+
+
+def test_confirm_action_change_date_executes(monkeypatch) -> None:
+    calls = {"date": 0}
+
+    monkeypatch.setattr(
+        agent,
+        "consume_pending_confirmation",
+        lambda *args, **kwargs: {"action_type": "change_date", "payload": {"target_date": "2026-04-01"}},
+    )
+
+    def fake_update_session_date(*args, **kwargs):
+        calls["date"] += 1
+
+    monkeypatch.setattr(agent, "update_session_date", fake_update_session_date)
+
+    result = agent.process_inbound_message(None, _context(is_lead=True), "CONFIRM ACTION act-a1b2c3")
+
+    assert calls["date"] == 1
+    assert result.should_broadcast is True
+    assert "moved to 2026-04-01" in result.reply_text.lower()
+
+
+def test_confirm_action_add_player_executes(monkeypatch) -> None:
+    new_player_id = uuid4()
+
+    monkeypatch.setattr(
+        agent,
+        "consume_pending_confirmation",
+        lambda *args, **kwargs: {
+            "action_type": "add_player",
+            "payload": {"name": "Tom", "phone": "+19175550123"},
+        },
+    )
+    monkeypatch.setattr(agent, "add_or_get_player_by_phone", lambda *args, **kwargs: new_player_id)
+    monkeypatch.setattr(agent, "add_player_to_session", lambda *args, **kwargs: True)
+    monkeypatch.setattr(agent, "generate_form_token", lambda *args, **kwargs: "tok123")
+    monkeypatch.setattr(agent, "update_session_status", lambda *args, **kwargs: None)
+
+    result = agent.process_inbound_message(None, _context(is_lead=True), "CONFIRM ACTION act-a1b2c3")
+
+    assert "player added" in result.reply_text.lower()
+    assert len(result.direct_messages) == 1
+    assert result.direct_messages[0][0] == new_player_id
+    assert "tok123" in result.direct_messages[0][1]

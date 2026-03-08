@@ -81,3 +81,47 @@ def test_confirm_action_add_player_executes(monkeypatch) -> None:
     assert len(result.direct_messages) == 1
     assert result.direct_messages[0][0] == new_player_id
     assert "tok123" in result.direct_messages[0][1]
+
+
+def test_proceed_without_them_generates_proposals(monkeypatch) -> None:
+    ctx = _context(is_lead=True)
+    ctx["session"]["players"] = [
+        {
+            "player_id": ctx["session"]["lead_player_id"],
+            "name": "Will",
+            "status": "confirmed",
+            "approved_courses": ["Bethpage"],
+            "available_time_blocks": ["late_morning"],
+        },
+        {
+            "player_id": uuid4(),
+            "name": "Jane",
+            "status": "confirmed",
+            "approved_courses": ["Bethpage"],
+            "available_time_blocks": ["late_morning"],
+        },
+        {
+            "player_id": uuid4(),
+            "name": "Dave",
+            "status": "unresponsive",
+            "approved_courses": [],
+            "available_time_blocks": [],
+        },
+    ]
+
+    monkeypatch.setattr(
+        agent,
+        "_ensure_proposals",
+        lambda *args, **kwargs: [
+            {
+                "course": "Bethpage",
+                "tee_time": date(2026, 3, 22),
+                "price_per_player": 42,
+            }
+        ],
+    )
+
+    result = agent.process_inbound_message(None, ctx, "PROCEED WITHOUT THEM")
+
+    assert "proceeding without unresponsive players" in result.reply_text.lower()
+    assert "found options" in result.reply_text.lower()

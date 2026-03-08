@@ -43,6 +43,7 @@
 - Added reusable prompt templates and a 5-minute demo runbook/script (`PROMPTS.md`, `DEMO.md`, `scripts/run_demo_5min.sh`) for fast walkthroughs.
 - Verified the 5-minute demo runbook against Railway production with `DEMO_FLOW_OK` and confirmed session transition to `confirmed`.
 - Added DB-backed integration coverage for lead-action staging and `CONFIRM ACTION` add-player execution flow.
+- Added explicit lead command handling for `PROCEED WITHOUT THEM` to continue proposal generation after unresponsive escalations.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -56,3 +57,4 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added reusable Codex prompt templates and a deterministic 5-minute demo runbook/script for local or Railway walkthroughs.
 - 2026-03-08: Executed the 5-minute runbook against Railway production and documented expected output snapshot in `DEMO.md`.
 - 2026-03-08: Added integration test for lead-action staging + `CONFIRM ACTION` execution (local execution requires reachable pooler `DATABASE_URL`).
+- 2026-03-08: Implemented and unit-tested `PROCEED WITHOUT THEM` lead command behavior for escalation follow-through.

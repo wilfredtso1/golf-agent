@@ -51,6 +51,7 @@ _REMOVE_PATTERN = re.compile(r"^remove\s+(.+)$", re.IGNORECASE)
 _DATE_PATTERN = re.compile(r"^(?:change|move|set)\s+date\s+(?:to\s+)?(\d{4}-\d{2}-\d{2})$", re.IGNORECASE)
 _COURSE_PATTERN = re.compile(r"^(?:change|set|update)\s+courses?\s*[:\-]?\s*(.+)$", re.IGNORECASE)
 _CONFIRM_ACTION_PATTERN = re.compile(r"^confirm\s+action\s+(act-[a-f0-9]{6})$", re.IGNORECASE)
+_PROCEED_WITHOUT_PATTERN = re.compile(r"^proceed\s+without\s+them\b", re.IGNORECASE)
 
 
 @dataclass
@@ -301,6 +302,34 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
         )
 
     if is_lead:
+        proceed_match = _PROCEED_WITHOUT_PATTERN.match(message)
+        if proceed_match:
+            players = [p for p in session.get("players", []) if isinstance(p, dict)]
+            has_unresponsive = any((p.get("status") or "").lower() == "unresponsive" for p in players)
+            if not has_unresponsive:
+                return AgentResult(reply_text="There are no unresponsive players in this session right now.")
+
+            policy = evaluate_session(session)
+            if not policy["minimum_group_size_met"]:
+                needed = max(0, 2 - int(policy["confirmed_count"]))
+                return AgentResult(
+                    reply_text=f"I still need {needed} more confirmed player(s) before I can proceed."
+                )
+            if not policy["has_overlap"]:
+                return AgentResult(reply_text="I still see a course/time overlap conflict and can't proceed yet.")
+
+            proposals = _ensure_proposals(cur, session, policy)
+            if not proposals:
+                return AgentResult(reply_text="Proceeding without unresponsive players, but I couldn't find matching tee times yet.")
+
+            return AgentResult(
+                reply_text=(
+                    "Proceeding without unresponsive players.\n"
+                    f"{_format_proposals_message(proposals)}"
+                ),
+                updated=True,
+            )
+
         add_match = _ADD_PATTERN.match(message)
         if add_match:
             raw_name, raw_phone = add_match.groups()

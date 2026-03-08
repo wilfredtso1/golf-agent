@@ -110,6 +110,14 @@ Against Railway:
 python3 dev_demo_flow.py --base-url https://golf-agent-production.up.railway.app
 ```
 
+Quick guided runbook (health + flow + course snapshot):
+
+```bash
+./scripts/run_demo_5min.sh
+```
+
+See [DEMO.md](DEMO.md) for the full 5-minute walkthrough.
+
 Default seeded demo courses:
 `Maple Moor, Silver Lake, La Tourette, Dyker, Pelham, Saxon Woods, Forest Hills`
 

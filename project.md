@@ -40,6 +40,7 @@
 - Form flow now reads shared course suggestions and can add new course names into the shared catalog.
 - Applied latest schema to production DB and seeded the shared courses catalog (7 courses).
 - Added reusable `golf-agent-production-shipping` skill plus repo `AGENTS.md` so future agents consistently run tests, deploy checks, and continuity doc updates.
+- Added reusable prompt templates and a 5-minute demo runbook/script (`PROMPTS.md`, `DEMO.md`, `scripts/run_demo_5min.sh`) for fast walkthroughs.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -50,3 +51,4 @@ After each completed implementation step, update this file:
 ## Last Updated
 - 2026-03-08: Added deployment runbook, CI workflow, env-contract test coverage, validated Railway US-East production deployment, added persistent courses catalog, wired shared course suggestions into form flows, added persistent course upserts from form + lead-trigger interactions, and validated production DB schema/seed operations via Railway runtime.
 - 2026-03-08: Added reusable production-shipping skill (`~/.codex/skills/golf-agent-production-shipping`) and repo-level `AGENTS.md` enforcement for consistent staff-level execution/handoff practices.
+- 2026-03-08: Added reusable Codex prompt templates and a deterministic 5-minute demo runbook/script for local or Railway walkthroughs.

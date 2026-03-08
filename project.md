@@ -16,6 +16,7 @@
   - Deterministic policy checks and action gates
 - Tee-time search: mock provider now (`mock_booking_api.py`), replaceable with GolfNow adapter.
 - Background jobs: reminder/escalation endpoint (`/jobs/reminders`) suitable for cron.
+- Deployment operations: Railway runbook + region management + smoke-check procedure in `DEPLOYMENT.md`.
 
 ## Current State (Latest)
 - Working lead trigger + form response ingestion + session/player/message persistence.
@@ -32,6 +33,7 @@
   - change date
   - change courses
   - all executed only after `CONFIRM ACTION <token>`.
+- GitHub + Railway deployment path now operational; production smoke checks pass.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -40,4 +42,4 @@ After each completed implementation step, update this file:
 3. If goals changed, update **Goals**.
 
 ## Last Updated
-- 2026-03-08: Added deterministic lead-action confirmation flow using short-lived DB tokens.
+- 2026-03-08: Added deployment runbook, CI workflow, and env-contract test coverage.

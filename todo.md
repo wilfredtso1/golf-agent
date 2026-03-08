@@ -9,9 +9,15 @@
 - [ ] Add structured logging for all session state transitions.
 - [ ] Add openapi docs/examples for `/api/lead-trigger`, `/api/form-response`, `/api/session-status`.
 
+## DevOps / Quality
+- [x] Create deployment runbook (`DEPLOYMENT.md`).
+- [x] Add GitHub Actions CI to run tests on push/PR.
+- [x] Add env-example contract test to prevent missing required variables.
+- [ ] Add CI job for DB-backed integration tests behind secrets/environment.
+
 ## Twilio Go-Live
 - [ ] Verify authenticated Twilio number can receive/send production SMS.
-- [ ] Set `TWILIO_VALIDATE_SIGNATURE=true` in deployed env.
+- [x] Set `TWILIO_VALIDATE_SIGNATURE=true` in deployed env.
 - [ ] Set `SMS_SEND_ENABLED=true` in deployed env.
 - [ ] Run real-phone end-to-end test from trigger -> confirm.
 
@@ -22,5 +28,6 @@
 
 ## Handoff Notes
 - Core deterministic flow is functional locally and in DB-backed smoke tests.
+- Railway production deploy is live with successful `/health` and `/dev/simulate-sms` checks.
 - Use `project.md` for architecture/current-state context before resuming work.
 - Run `python3 -m pytest -q` first; run DB integration tests when needed.

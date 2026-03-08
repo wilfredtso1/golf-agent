@@ -1,7 +1,7 @@
 # Golf Agent TODO
 
 ## In Progress
-- [ ] Validate remaining lead-action confirmation flows against live Supabase data path (remove/courses).
+- [x] Validate lead-action confirmation flows against live Supabase data path (add/remove/date/courses).
 - [x] Update local `DATABASE_URL` to Supabase pooler host and re-run DB-backed integration tests.
 
 ## Next Up

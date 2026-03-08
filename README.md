@@ -1,5 +1,7 @@
 # Golf Agent Backend
 
+Agent to coordinate and book group tee times.
+
 ## Local backend checks
 
 1. Install dependencies:

@@ -50,6 +50,8 @@
 - [ ] Remove `ensure_courses_table` DDL-on-every-call once schema migration is confirmed reliable (see `REVIEW_NOTES.md` section b)
 - [ ] Fix `async def twilio_sms_webhook` to not block the event loop (requires psycopg-async or run_in_executor)
 - [x] Harden active `session_code` uniqueness with DB constraint + retry logic to remove concurrent create race.
+- [x] Apply schema in production and verify `uq_sessions_active_session_code` exists.
+- [x] Fix Railway schema apply script to connect using `DATABASE_URL` explicitly.
 
 ## Handoff Notes
 - Core deterministic flow is functional locally and in DB-backed smoke tests.

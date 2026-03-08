@@ -189,6 +189,7 @@ CREATE TABLE sessions (
   lead_player_id UUID REFERENCES players(id),
   target_date DATE NOT NULL,
   candidate_courses JSONB NOT NULL,         -- ["Bethpage", "Marine Park"]
+  session_code TEXT,                         -- short code for multi-session SMS routing
   status TEXT DEFAULT 'collecting',         -- collecting | searching | proposing | confirmed | closed | expired
   form_url TEXT,                            -- URL to the form for this session
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -228,8 +229,16 @@ CREATE TABLE messages (
   player_id UUID REFERENCES players(id),
   direction TEXT NOT NULL,                  -- inbound | outbound
   body TEXT NOT NULL,
+  provider_message_sid TEXT,                -- Twilio SID for idempotency
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Protect against active session-code collisions:
+-- enforce uniqueness only while sessions are active.
+CREATE UNIQUE INDEX uq_sessions_active_session_code
+  ON sessions(session_code)
+  WHERE session_code IS NOT NULL
+    AND status IN ('collecting', 'searching', 'proposing');
 ```
 
 ### LLM: OpenAI (GPT-4o) via API

@@ -50,6 +50,7 @@
 - Added CI DB-integration job gated by `secrets.DATABASE_URL` to continuously validate live DB flows.
 - Expanded DB-backed integration coverage to include staged/confirmed lead date-change actions.
 - Expanded DB-backed integration coverage to include all staged/confirmed lead actions (add/remove/date/courses).
+- Enriched seeded shared courses with metadata tags (region/provider) and merged metadata support in course upserts.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -70,3 +71,4 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added GitHub Actions DB integration workflow (secret-gated) for `tests/test_integration_flow.py`.
 - 2026-03-08: Verified local pooler `DATABASE_URL` and expanded DB integration tests (`add_player` + `change_date` confirm-action flows).
 - 2026-03-08: Completed DB-backed confirm-action integration coverage for `add`, `remove`, `change date`, and `change courses`.
+- 2026-03-08: Added course metadata enrichment in seed data and snapshot merge path for shared catalog quality.

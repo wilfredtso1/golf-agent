@@ -42,11 +42,15 @@ def upsert_course_snapshot(
     booking_url: str | None,
     price_per_player: float | None,
     currency: str = "USD",
+    metadata: dict[str, object] | None = None,
 ) -> None:
     ensure_courses_table(cur)
     clean_name = name.strip()
     if not clean_name:
         return
+    payload: dict[str, object] = {"source": "proposal_generation"}
+    if metadata:
+        payload.update(metadata)
     cur.execute(
         """
         INSERT INTO courses (
@@ -71,7 +75,7 @@ def upsert_course_snapshot(
             booking_url,
             price_per_player,
             currency,
-            Jsonb({"source": "proposal_generation"}),
+            Jsonb(payload),
         ),
     )
 

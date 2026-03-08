@@ -29,7 +29,7 @@
 ## Data / Catalog
 - [x] Add persistent `courses` table and keep snapshots updated from proposals.
 - [x] Apply latest DB schema in production and seed shared courses catalog.
-- [ ] Add course metadata enrichment (location, tee-sheet provider id, borough/region tags).
+- [x] Add course metadata enrichment (location, tee-sheet provider id, borough/region tags).
 
 ## GolfNow Integration
 - [ ] Build semantic course retrieval over shared catalog for GolfNow matching.

@@ -4,22 +4,19 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
-from urllib.parse import urlencode
 from uuid import UUID
 
-from config import SETTINGS
 from llm import LLMError, parse_intent_with_llm
-from booking_provider import search_tee_times
 from policy_engine import evaluate_session
-from token_utils import generate_form_token
+from token_utils import build_form_url, generate_form_token
 from tools import (
     add_or_get_player_by_phone,
     add_player_to_session,
+    ensure_session_proposals,
     get_latest_proposals,
     get_player_name,
     get_session_state,
     remove_player_from_session_by_name,
-    replace_tee_time_proposals,
     select_proposal_by_position,
     update_session_courses,
     update_session_date,
@@ -59,10 +56,6 @@ class AgentResult:
     direct_messages: list[tuple[UUID, str]] = field(default_factory=list)
     updated: bool = False
     debug: dict[str, object] = field(default_factory=dict)
-
-
-def _build_form_url(token: str) -> str:
-    return f"{SETTINGS.form_base_url}?{urlencode({'token': token})}"
 
 
 def _parse_time_blocks(message_lower: str) -> list[str]:
@@ -128,28 +121,6 @@ def _maybe_parse_intent_with_llm(context: dict[str, object], message: str) -> di
     }
 
 
-def _ensure_proposals(cur, session: dict[str, object], policy: dict[str, object]) -> list[dict[str, object]]:
-    if not (policy["minimum_group_size_met"] and policy["has_overlap"]):
-        return []
-
-    target_date = session.get("target_date")
-    if target_date is None:
-        return []
-    group_size = int(policy["confirmed_count"])
-    options = search_tee_times(
-        target_date=target_date,
-        time_windows=list(policy["time_overlap"]),
-        courses=list(policy["course_overlap"]),
-        group_size=group_size,
-    )
-    if not options:
-        return []
-
-    proposals = replace_tee_time_proposals(cur, session["id"], options)
-    update_session_status(cur, session["id"], "proposing")
-    return proposals
-
-
 def process_inbound_message(cur, context: dict[str, object], inbound_body: str) -> AgentResult:
     message = inbound_body.strip()
     message_lower = message.lower()
@@ -212,7 +183,7 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
             if not policy["has_overlap"]:
                 return AgentResult(reply_text="I still see a course/time overlap conflict and can't proceed yet.")
 
-            proposals = _ensure_proposals(cur, session, policy)
+            proposals = ensure_session_proposals(cur, session, policy)
             if not proposals:
                 return AgentResult(reply_text="Proceeding without unresponsive players, but I couldn't find matching tee times yet.")
 
@@ -238,7 +209,7 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
             inserted = add_player_to_session(cur, session_id=session_id, player_id=new_player_id)
             update_session_status(cur, session_id, "collecting")
             form_token = generate_form_token(str(session_id), str(new_player_id))
-            form_link = _build_form_url(form_token)
+            form_link = build_form_url(form_token)
             invite_message = (
                 f"Hey {name}, this is Golf Agent helping {player_name} coordinate a round on "
                 f"{session['target_date'].isoformat()}. Please submit your availability: {form_link}"
@@ -372,7 +343,7 @@ def process_inbound_message(cur, context: dict[str, object], inbound_body: str) 
         current_session = refreshed or session
         policy = evaluate_session(current_session)
 
-        proposals = _ensure_proposals(cur, current_session, policy)
+        proposals = ensure_session_proposals(cur, current_session, policy)
         direct: list[tuple[UUID, str]] = []
         if proposals:
             direct.append((lead_id, _format_proposals_message(proposals)))

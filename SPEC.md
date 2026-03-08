@@ -25,6 +25,8 @@ The agent parses this, creates a session in Supabase, and moves to outreach.
 Each invited player receives an individual SMS:
 "Hey Dave, this is [Agent Name] — an AI assistant helping [Lead] set up a golf round this Saturday. Pick what works for you: [form link]"
 
+Each session carries a short numeric session code (2-4 digits, currently 4 digits) included in invite/follow-up messages to disambiguate replies if a player is part of multiple active sessions.
+
 The form is a simple web page (hosted as a static page, one per session) with:
 - "Are you in?" (Yes / No)
 - Checkboxes for the candidate courses the lead specified (e.g., Bethpage, Marine Park, Dyker Beach)
@@ -131,6 +133,7 @@ When the agent can't resolve something autonomously, it escalates clearly:
 - **Unresponsive player** → reminder at 4 hours (clearly from AI, not the lead), escalation to lead at 8 hours with `PROCEED WITHOUT THEM` option
 - **No available tee times** → tells the lead, suggests alternatives (different date, time, courses)
 - **Ambiguous text messages** → asks for clarification rather than guessing
+- **Multiple active sessions for same phone** → asks user to route with session code (e.g., `0421: late morning works`) and accepts a code-only message (e.g., `0421`) to set active routing context for follow-up replies while that session stays active
 - **Player requests something outside scope** → "I can help with coordinating tee times — for anything else you'd want to text [Lead] directly"
 
 ## Memory and State Architecture

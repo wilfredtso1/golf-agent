@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import logging
+import random
+import re
 from datetime import date
 from typing import Optional
 from uuid import UUID, uuid4
-from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from psycopg import errors
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 from twilio.twiml.messaging_response import MessagingResponse
@@ -18,18 +20,17 @@ from config import SETTINGS
 from context_builder import build_context
 from db import get_conn
 from policy_engine import evaluate_session
-from token_utils import InvalidFormToken, generate_form_token, verify_form_token
+from token_utils import InvalidFormToken, build_form_url, generate_form_token, verify_form_token
 from tools import (
+    ensure_session_proposals,
     get_latest_proposals,
+    insert_outbound_message,
     list_courses,
     get_session_state,
     list_session_players,
-    replace_tee_time_proposals,
     upsert_course_snapshot,
-    update_session_status,
 )
 from twilio_helpers import InvalidPhoneNumber, normalize_phone, send_sms, validate_twilio_signature
-from booking_provider import search_tee_times
 from reminders import run_reminder_cycle
 
 logger = logging.getLogger("golf-agent")
@@ -37,6 +38,9 @@ logging.basicConfig(level=logging.INFO)
 
 ACTIVE_SESSION_STATUSES = ("collecting", "searching", "proposing")
 DEFAULT_TIME_BLOCKS = ["early_morning", "late_morning", "early_afternoon"]
+_SESSION_CODE_INSERT_MAX_ATTEMPTS = 8
+_SESSION_CODE_PREFIX_RE = re.compile(r"^\s*(\d{2,4})\s*[:\-]?\s*(.*)$")
+_SESSION_CODE_INLINE_RE = re.compile(r"\b(?:session|for)\s+(\d{2,4})\b", re.IGNORECASE)
 
 app = FastAPI(title="Golf Agent", version="0.2.0")
 app.add_middleware(
@@ -137,6 +141,7 @@ def session_status(session_id: UUID) -> dict[str, object]:
                 "ok": True,
                 "session": {
                     "id": str(session["id"]),
+                    "session_code": session.get("session_code"),
                     "status": session["status"],
                     "target_date": session["target_date"].isoformat(),
                     "candidate_courses": session["candidate_courses"],
@@ -193,15 +198,12 @@ def lead_trigger(payload: LeadTriggerPayload) -> dict[str, object]:
                     booking_url=None,
                     price_per_player=None,
                 )
-            cur.execute(
-                """
-                INSERT INTO sessions (lead_player_id, target_date, candidate_courses, status)
-                VALUES (%s, %s, %s, 'collecting')
-                RETURNING id
-                """,
-                (lead_player_id, payload.target_date, Jsonb(cleaned_courses)),
+            session_id, session_code = _create_session_with_unique_code(
+                cur,
+                lead_player_id=lead_player_id,
+                target_date=payload.target_date,
+                candidate_courses=cleaned_courses,
             )
-            session_id = cur.fetchone()["id"]
 
             cur.execute(
                 """
@@ -248,15 +250,16 @@ def lead_trigger(payload: LeadTriggerPayload) -> dict[str, object]:
             with conn.cursor() as cur:
                 for target in invite_targets:
                     token = generate_form_token(str(session_id), str(target["player_id"]))
-                    form_link = _build_form_url(token)
+                    form_link = build_form_url(token)
                     message_body = (
                         f"Hey {target['name']}, this is Golf Agent helping "
-                        f"{payload.lead_name or 'your lead'} coordinate a round on {payload.target_date.isoformat()}. "
+                        f"{payload.lead_name or 'your lead'} coordinate a round on {payload.target_date.isoformat()} "
+                        f"(Session {session_code}). "
                         f"Please submit your availability: {form_link}"
                     )
                     try:
                         provider_sid = send_sms(str(target["phone"]), message_body)
-                        _insert_outbound_message(
+                        insert_outbound_message(
                             cur,
                             session_id=session_id,
                             player_id=target["player_id"],
@@ -267,7 +270,8 @@ def lead_trigger(payload: LeadTriggerPayload) -> dict[str, object]:
                             {"phone": str(target["phone"]), "status": "sent", "message_sid": provider_sid}
                         )
                     except Exception as exc:  # pragma: no cover - network/provider failures
-                        logger.exception("Failed to send invite SMS to %s", target["phone"])
+                        # Mask phone to last 4 digits — full numbers must not appear in stored logs.
+                        logger.exception("Failed to send invite SMS to ***%s", str(target["phone"])[-4:])
                         invite_results.append(
                             {"phone": str(target["phone"]), "status": "failed", "error": str(exc)}
                         )
@@ -275,6 +279,7 @@ def lead_trigger(payload: LeadTriggerPayload) -> dict[str, object]:
     return {
         "ok": True,
         "session_id": str(session_id),
+        "session_code": session_code,
         "invite_count": len(invite_targets),
         "invites": invite_results,
     }
@@ -320,13 +325,14 @@ def _process_inbound_sms(form_data: dict[str, str]) -> str:
     with get_conn() as conn:
         with conn.cursor() as cur:
             player_id = _get_or_create_player(cur, from_number)
-            session_id, ambiguous = _resolve_active_session(cur, player_id)
+            requested_session_code, cleaned_body = _extract_session_code(body)
+            session_id, ambiguous = _resolve_active_session(cur, player_id, requested_session_code)
 
             inbound_id = _insert_inbound_message(
                 cur,
                 session_id=session_id,
                 player_id=player_id,
-                body=body,
+                body=cleaned_body,
                 provider_message_sid=message_sid,
             )
 
@@ -335,21 +341,26 @@ def _process_inbound_sms(form_data: dict[str, str]) -> str:
                 return ""
 
             if ambiguous:
-                reply_text = (
-                    "I see multiple active golf sessions for you. "
-                    "Please tell me the course or date so I can route this message."
-                )
+                reply_text = _format_ambiguous_session_reply(cur, player_id, requested_session_code)
             else:
-                context = build_context(cur, session_id, player_id)
-                result = process_inbound_message(cur, context, body)
-                reply_text = result.reply_text
-                if result.should_broadcast and result.broadcast_text and session_id:
-                    _broadcast_message(cur, session_id, body=result.broadcast_text, exclude_player_id=player_id)
-                if result.direct_messages and session_id:
-                    for target_player_id, text in result.direct_messages:
-                        _send_message_to_player(cur, session_id, target_player_id, text)
+                try:
+                    context = build_context(cur, session_id, player_id)
+                    result = process_inbound_message(cur, context, cleaned_body)
+                    reply_text = result.reply_text
+                    if result.should_broadcast and result.broadcast_text and session_id:
+                        _broadcast_message(cur, session_id, body=result.broadcast_text, exclude_player_id=player_id)
+                    if result.direct_messages and session_id:
+                        for target_player_id, text in result.direct_messages:
+                            _send_message_to_player(cur, session_id, target_player_id, text)
+                except Exception:
+                    # Log internally but reply with a safe generic message so Twilio
+                    # gets a 200 (not a 500 that would trigger retries, causing the
+                    # inbound dedup guard to silently swallow the retry instead of
+                    # actually re-processing).
+                    logger.exception("Unhandled error processing inbound message sid=%s", message_sid)
+                    reply_text = "Sorry, something went wrong on our end. Please try again in a moment."
 
-            _insert_outbound_message(cur, session_id=session_id, player_id=player_id, body=reply_text)
+            insert_outbound_message(cur, session_id=session_id, player_id=player_id, body=reply_text)
 
     return reply_text
 
@@ -467,19 +478,11 @@ def submit_form_response(payload: FormResponsePayload) -> dict[str, object]:
             session = get_session_state(cur, session_id)
             if session:
                 policy = evaluate_session(session)
-                if policy["minimum_group_size_met"] and policy["has_overlap"]:
-                    options = search_tee_times(
-                        target_date=session["target_date"],
-                        time_windows=list(policy["time_overlap"]),
-                        courses=list(policy["course_overlap"]),
-                        group_size=int(policy["confirmed_count"]),
-                    )
-                    if options:
-                        proposals = replace_tee_time_proposals(cur, session_id, options)
-                        update_session_status(cur, session_id, "proposing")
-                        lead_id = session["lead_player_id"]
-                        lead_message = _format_proposal_summary_for_sms(proposals)
-                        _send_message_to_player(cur, session_id, lead_id, lead_message)
+                proposals = ensure_session_proposals(cur, session, policy)
+                if proposals:
+                    lead_id = session["lead_player_id"]
+                    lead_message = _format_proposal_summary_for_sms(proposals)
+                    _send_message_to_player(cur, session_id, lead_id, lead_message)
 
     return {
         "ok": True,
@@ -487,7 +490,6 @@ def submit_form_response(payload: FormResponsePayload) -> dict[str, object]:
         "player_id": str(player_id),
         "status": status,
     }
-
 
 
 def _parse_token_ids(token: str) -> tuple[UUID, UUID]:
@@ -503,7 +505,6 @@ def _parse_token_ids(token: str) -> tuple[UUID, UUID]:
         raise HTTPException(status_code=400, detail="Token payload contains invalid IDs") from exc
 
     return session_id, player_id
-
 
 
 def _update_player_profile(cur, player_id: UUID, profile: PlayerProfileUpdate) -> None:
@@ -530,12 +531,6 @@ def _update_player_profile(cur, player_id: UUID, profile: PlayerProfileUpdate) -
     cur.execute(query, tuple(values))
 
 
-
-def _build_form_url(token: str) -> str:
-    query = urlencode({"token": token})
-    return f"{SETTINGS.form_base_url}?{query}"
-
-
 def _get_or_create_player(cur, phone: str, name: Optional[str] = None) -> UUID:
     cur.execute("SELECT id, name FROM players WHERE phone = %s", (phone,))
     row = cur.fetchone()
@@ -558,11 +553,10 @@ def _get_or_create_player(cur, phone: str, name: Optional[str] = None) -> UUID:
     return created["id"]
 
 
-
-def _resolve_active_session(cur, player_id: UUID) -> tuple[UUID | None, bool]:
+def _resolve_active_session(cur, player_id: UUID, requested_session_code: str | None = None) -> tuple[UUID | None, bool]:
     cur.execute(
         """
-        SELECT s.id
+        SELECT s.id, s.session_code
         FROM session_players sp
         JOIN sessions s ON s.id = sp.session_id
         WHERE sp.player_id = %s
@@ -572,13 +566,141 @@ def _resolve_active_session(cur, player_id: UUID) -> tuple[UUID | None, bool]:
         (player_id, list(ACTIVE_SESSION_STATUSES)),
     )
     rows = cur.fetchall()
+    if requested_session_code:
+        filtered = [row for row in rows if str(row.get("session_code") or "") == requested_session_code]
+        if len(filtered) == 1:
+            return filtered[0]["id"], False
+        if len(rows) > 0:
+            return None, True
 
     if len(rows) == 1:
         return rows[0]["id"], False
     if len(rows) > 1:
+        hinted_session_id = _get_recent_active_session_hint(cur, player_id)
+        if hinted_session_id and any(row["id"] == hinted_session_id for row in rows):
+            return hinted_session_id, False
         return None, True
     return None, False
 
+
+def _extract_session_code(body: str) -> tuple[str | None, str]:
+    message = body.strip()
+    prefix_match = _SESSION_CODE_PREFIX_RE.match(message)
+    if prefix_match and prefix_match.group(1):
+        return prefix_match.group(1), prefix_match.group(2).strip()
+
+    inline_match = _SESSION_CODE_INLINE_RE.search(message)
+    if inline_match:
+        code = inline_match.group(1)
+        cleaned = _SESSION_CODE_INLINE_RE.sub("", message).strip(" :,-")
+        return code, cleaned or message
+    return None, message
+
+
+def _generate_session_code(cur) -> str:
+    for _ in range(40):
+        candidate = f"{random.randint(0, 9999):04d}"
+        cur.execute(
+            """
+            SELECT 1
+            FROM sessions
+            WHERE session_code = %s
+              AND status = ANY(%s)
+            LIMIT 1
+            """,
+            (candidate, list(ACTIVE_SESSION_STATUSES)),
+        )
+        if not cur.fetchone():
+            return candidate
+    return f"{random.randint(0, 9999):04d}"
+
+
+def _create_session_with_unique_code(
+    cur,
+    *,
+    lead_player_id: UUID,
+    target_date: date,
+    candidate_courses: list[str],
+) -> tuple[UUID, str]:
+    for _ in range(_SESSION_CODE_INSERT_MAX_ATTEMPTS):
+        session_code = _generate_session_code(cur)
+        cur.execute("SAVEPOINT session_code_insert")
+        try:
+            cur.execute(
+                """
+                INSERT INTO sessions (lead_player_id, target_date, candidate_courses, session_code, status)
+                VALUES (%s, %s, %s, %s, 'collecting')
+                RETURNING id, session_code
+                """,
+                (lead_player_id, target_date, Jsonb(candidate_courses), session_code),
+            )
+            inserted = cur.fetchone()
+            cur.execute("RELEASE SAVEPOINT session_code_insert")
+            return inserted["id"], inserted["session_code"]
+        except errors.UniqueViolation:
+            cur.execute("ROLLBACK TO SAVEPOINT session_code_insert")
+            cur.execute("RELEASE SAVEPOINT session_code_insert")
+
+    raise RuntimeError("Unable to allocate unique active session code after retries")
+
+
+def _get_recent_active_session_hint(cur, player_id: UUID) -> UUID | None:
+    cur.execute(
+        """
+        SELECT m.session_id
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE m.player_id = %s
+          AND m.session_id IS NOT NULL
+          AND s.status = ANY(%s)
+        ORDER BY m.created_at DESC
+        LIMIT 1
+        """,
+        (player_id, list(ACTIVE_SESSION_STATUSES)),
+    )
+    row = cur.fetchone()
+    return row["session_id"] if row else None
+
+
+def _list_active_sessions_for_player(cur, player_id: UUID) -> list[dict[str, object]]:
+    cur.execute(
+        """
+        SELECT s.id, s.session_code, s.target_date, s.candidate_courses
+        FROM session_players sp
+        JOIN sessions s ON s.id = sp.session_id
+        WHERE sp.player_id = %s
+          AND s.status = ANY(%s)
+        ORDER BY s.created_at DESC
+        """,
+        (player_id, list(ACTIVE_SESSION_STATUSES)),
+    )
+    return cur.fetchall()
+
+
+def _format_ambiguous_session_reply(cur, player_id: UUID, requested_session_code: str | None) -> str:
+    sessions = _list_active_sessions_for_player(cur, player_id)
+    if not sessions:
+        return (
+            "I couldn't find an active session for that code. "
+            "Ask your lead to start a new round or send your form link."
+        )
+
+    lines = []
+    if requested_session_code:
+        lines.append(f"I couldn't match session code {requested_session_code}. Active sessions:")
+    else:
+        lines.append(
+            "I see multiple active sessions. Reply with your 4-digit session code, "
+            "for example: 0421: late morning works."
+        )
+        lines.append("You can also send just the code once (for example: 0421) to set the active session.")
+    for row in sessions[:5]:
+        code = str(row.get("session_code") or "----")
+        date_text = row["target_date"].isoformat() if row.get("target_date") else "unknown-date"
+        courses = [c for c in (row.get("candidate_courses") or []) if isinstance(c, str)]
+        course_preview = ", ".join(courses[:2]) if courses else "no courses"
+        lines.append(f"- {code}: {date_text} ({course_preview})")
+    return "\n".join(lines)
 
 
 def _insert_inbound_message(cur, session_id: UUID | None, player_id: UUID, body: str, provider_message_sid: str) -> UUID | None:
@@ -595,23 +717,6 @@ def _insert_inbound_message(cur, session_id: UUID | None, player_id: UUID, body:
     )
     row = cur.fetchone()
     return row["id"] if row else None
-
-
-
-def _insert_outbound_message(
-    cur,
-    session_id: UUID | None,
-    player_id: UUID,
-    body: str,
-    provider_message_sid: Optional[str] = None,
-) -> None:
-    cur.execute(
-        """
-        INSERT INTO messages (session_id, player_id, direction, body, provider_message_sid)
-        VALUES (%s, %s, 'outbound', %s, %s)
-        """,
-        (session_id, player_id, body, provider_message_sid),
-    )
 
 
 def _format_proposal_summary_for_sms(proposals: list[dict[str, object]]) -> str:
@@ -633,7 +738,7 @@ def _send_message_to_player(cur, session_id: UUID, player_id: UUID, body: str) -
             provider_sid = send_sms(str(row["phone"]), body)
         except Exception:  # pragma: no cover - provider/network errors
             logger.exception("Failed to send SMS to player_id=%s", player_id)
-    _insert_outbound_message(cur, session_id=session_id, player_id=player_id, body=body, provider_message_sid=provider_sid)
+    insert_outbound_message(cur, session_id=session_id, player_id=player_id, body=body, provider_message_sid=provider_sid)
 
 
 def _broadcast_message(cur, session_id: UUID, body: str, exclude_player_id: UUID | None = None) -> None:

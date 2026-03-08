@@ -12,6 +12,19 @@ class LLMError(RuntimeError):
     pass
 
 
+# Extracted to a named constant so prompt changes are auditable in one place.
+_INTENT_SYSTEM_PROMPT = (
+    "You extract SMS intent for a golf coordination agent. "
+    "Return strict JSON with keys: type, available_time_blocks, approved_courses, option_number. "
+    "type must be one of: preferences, decline, select_option, none. "
+    "Use only time block enums: early_morning, late_morning, early_afternoon."
+)
+
+# Generous ceiling for a structured JSON response; prevents runaway token spend
+# and ensures truncated responses are caught rather than silently accepted.
+_INTENT_MAX_TOKENS = 256
+
+
 def has_llm_config() -> bool:
     return bool(SETTINGS.openai_api_key and SETTINGS.openai_model)
 
@@ -24,13 +37,6 @@ def parse_intent_with_llm(context: dict[str, object], inbound_body: str) -> dict
     player = context.get("player") or {}
     candidate_courses = session.get("candidate_courses") or []
 
-    system_prompt = (
-        "You extract SMS intent for a golf coordination agent. "
-        "Return strict JSON with keys: type, available_time_blocks, approved_courses, option_number. "
-        "type must be one of: preferences, decline, select_option, none. "
-        "Use only time block enums: early_morning, late_morning, early_afternoon."
-    )
-
     user_prompt = {
         "message": inbound_body,
         "player_name": player.get("name"),
@@ -41,9 +47,10 @@ def parse_intent_with_llm(context: dict[str, object], inbound_body: str) -> dict
     payload = {
         "model": SETTINGS.openai_model,
         "temperature": 0,
+        "max_tokens": _INTENT_MAX_TOKENS,
         "response_format": {"type": "json_object"},
         "messages": [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": _INTENT_SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(user_prompt)},
         ],
     }

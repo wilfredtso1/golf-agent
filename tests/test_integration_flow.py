@@ -43,6 +43,7 @@ def test_end_to_end_proposal_and_confirm_flow() -> None:
         )
     )
     session_id = created["session_id"]
+    assert len(str(created["session_code"])) == 4
 
     invite_reply = _process_inbound_sms(
         {

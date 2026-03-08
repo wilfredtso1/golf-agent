@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from db import get_conn
+from tools import insert_outbound_message
 from twilio_helpers import send_sms
 
 REMINDER_AFTER_HOURS = 4
@@ -67,7 +68,7 @@ def run_reminder_cycle(now: datetime | None = None) -> dict[str, int]:
                         "Please send your availability or use your form link."
                     )
                     sid = _safe_send_sms(row["player_phone"], reminder_body)
-                    _insert_outbound_message(
+                    insert_outbound_message(
                         cur,
                         session_id=row["session_id"],
                         player_id=row["player_id"],
@@ -86,7 +87,7 @@ def run_reminder_cycle(now: datetime | None = None) -> dict[str, int]:
                     "Reply with PROCEED WITHOUT THEM if you want to move forward."
                 )
                 sid = _safe_send_sms(row["lead_phone"], escalate_body)
-                _insert_outbound_message(
+                insert_outbound_message(
                     cur,
                     session_id=row["session_id"],
                     player_id=row["lead_player_id"],
@@ -111,20 +112,3 @@ def _safe_send_sms(phone: str, body: str) -> str | None:
         return send_sms(phone, body)
     except Exception:  # pragma: no cover - provider/network failures
         return None
-
-
-def _insert_outbound_message(
-    cur,
-    *,
-    session_id,
-    player_id,
-    body: str,
-    provider_message_sid: str | None,
-) -> None:
-    cur.execute(
-        """
-        INSERT INTO messages (session_id, player_id, direction, body, provider_message_sid)
-        VALUES (%s, %s, 'outbound', %s, %s)
-        """,
-        (session_id, player_id, body, provider_message_sid),
-    )

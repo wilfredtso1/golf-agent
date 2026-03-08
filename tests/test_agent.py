@@ -60,7 +60,7 @@ def test_process_inbound_updates_preferences(monkeypatch) -> None:
     monkeypatch.setattr(agent, "update_session_player", fake_update_session_player)
     monkeypatch.setattr(agent, "get_session_state", fake_get_session_state)
     monkeypatch.setattr(agent, "update_session_status", fake_update_session_status)
-    monkeypatch.setattr(agent, "replace_tee_time_proposals", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agent, "ensure_session_proposals", lambda *args, **kwargs: [])
 
     result = agent.process_inbound_message(None, _context(), "late morning at bethpage works")
 

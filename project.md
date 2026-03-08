@@ -51,6 +51,10 @@
 - Added semantic course matching utilities and wired shared-catalog mapping into the GolfNow adapter scaffold.
 - Added OpenAPI-friendly endpoint metadata/examples and a JSON demo-readiness report script (`scripts/demo_report.py`).
 - Added DB-backed eval harness (`tests/test_eval_scenarios.py`) and validated it against the updated autonomous session-management model.
+- Added short numeric `session_code` routing for ambiguous multi-session phone numbers, with SMS parsing (`0421: ...`) and disambiguation prompts.
+- Removed duplicate proposal-generation logic by centralizing policy/search/proposal persistence in a shared helper used by both agent and form-response paths.
+- Improved ambiguous multi-session routing to accept code-only disambiguation and reuse a recent active-session hint for follow-up messages.
+- Hardened active `session_code` uniqueness with DB-enforced partial unique index + insert retry/savepoint logic to eliminate concurrent create races.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -78,3 +82,7 @@ After each completed implementation step, update this file:
 - 2026-03-08: Added endpoint OpenAPI metadata and a machine-readable demo report command for quick go/no-go validation.
 - 2026-03-08: Updated lead action model to immediate execution (session management) while preserving final booking confirmation gate.
 - 2026-03-08: Added and validated DB-backed eval scenarios (`tests/test_eval_scenarios.py`) with escalated test run.
+- 2026-03-08: Added multi-session routing via short session codes to prevent ambiguity for phone numbers active in multiple sessions.
+- 2026-03-08: Centralized proposal generation into a shared helper and added sticky disambiguation improvements for multi-session inbound SMS routing.
+- 2026-03-08: Staff engineer code-review pass — dead code removal, DRY consolidation, silent-failure fix on Twilio webhook, phone masking in logs, LLM prompt hygiene. See `REVIEW_NOTES.md`.
+- 2026-03-08: Fixed session-code TOCTOU risk with DB unique index over active sessions and retried insert allocation.

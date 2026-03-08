@@ -134,6 +134,10 @@ Session-management commands from the lead execute immediately (no extra confirma
 - `change date to YYYY-MM-DD`
 - `change courses: <course1>, <course2>, ...`
 
+If a player is in multiple active sessions, prefix replies with session code:
+- `0421: late morning works`
+- `for 0421 I'm out`
+
 ## Tests
 
 ```bash

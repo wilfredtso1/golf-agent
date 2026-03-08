@@ -155,7 +155,7 @@ def get_player_name(cur, player_id: UUID) -> str:
 def get_session_state(cur, session_id: UUID) -> dict[str, object] | None:
     cur.execute(
         """
-        SELECT id, lead_player_id, target_date, candidate_courses, status
+        SELECT id, lead_player_id, target_date, candidate_courses, session_code, status
         FROM sessions
         WHERE id = %s
         LIMIT 1
@@ -191,6 +191,7 @@ def get_session_state(cur, session_id: UUID) -> dict[str, object] | None:
         "lead_player_id": session["lead_player_id"],
         "target_date": session["target_date"],
         "candidate_courses": session["candidate_courses"] or [],
+        "session_code": session.get("session_code"),
         "status": session["status"],
         "players": [
             {
@@ -253,19 +254,6 @@ def get_recent_messages(cur, session_id: UUID | None, player_id: UUID, limit: in
     ]
 
 
-def get_active_confirmed_player_ids(cur, session_id: UUID) -> list[UUID]:
-    cur.execute(
-        """
-        SELECT player_id
-        FROM session_players
-        WHERE session_id = %s AND status = 'confirmed'
-        ORDER BY invited_at ASC
-        """,
-        (session_id,),
-    )
-    return [row["player_id"] for row in cur.fetchall()]
-
-
 def list_session_players(cur, session_id: UUID) -> list[dict[str, object]]:
     cur.execute(
         """
@@ -286,6 +274,36 @@ def list_session_players(cur, session_id: UUID) -> list[dict[str, object]]:
         }
         for row in cur.fetchall()
     ]
+
+
+def ensure_session_proposals(
+    cur,
+    session: dict[str, object],
+    policy: dict[str, object] | None = None,
+) -> list[dict[str, object]]:
+    from booking_provider import search_tee_times
+    from policy_engine import evaluate_session
+
+    active_policy = policy or evaluate_session(session)
+    if not (active_policy["minimum_group_size_met"] and active_policy["has_overlap"]):
+        return []
+
+    target_date = session.get("target_date")
+    if target_date is None:
+        return []
+
+    options = search_tee_times(
+        target_date=target_date,
+        time_windows=list(active_policy["time_overlap"]),
+        courses=list(active_policy["course_overlap"]),
+        group_size=int(active_policy["confirmed_count"]),
+    )
+    if not options:
+        return []
+
+    proposals = replace_tee_time_proposals(cur, session["id"], options)
+    update_session_status(cur, session["id"], "proposing")
+    return proposals
 
 
 def replace_tee_time_proposals(cur, session_id: UUID, options: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -505,3 +523,21 @@ def update_session_courses(cur, *, session_id: UUID, candidate_courses: list[str
         (session_id,),
     )
     cur.execute("DELETE FROM tee_time_proposals WHERE session_id = %s", (session_id,))
+
+
+def insert_outbound_message(
+    cur,
+    *,
+    session_id: UUID | None,
+    player_id: UUID,
+    body: str,
+    provider_message_sid: str | None = None,
+) -> None:
+    """Persist an outbound message. Consolidated from main.py and reminders.py."""
+    cur.execute(
+        """
+        INSERT INTO messages (session_id, player_id, direction, body, provider_message_sid)
+        VALUES (%s, %s, 'outbound', %s, %s)
+        """,
+        (session_id, player_id, body, provider_message_sid),
+    )

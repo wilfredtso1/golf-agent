@@ -6,6 +6,7 @@ import hmac
 import json
 import time
 from typing import Any
+from urllib.parse import urlencode
 
 from config import SETTINGS
 
@@ -71,3 +72,8 @@ def verify_form_token(token: str) -> dict[str, Any]:
         raise InvalidFormToken("Token missing required fields")
 
     return payload
+
+
+def build_form_url(token: str) -> str:
+    """Single source of truth for form URL construction used by agent and main."""
+    return f"{SETTINGS.form_base_url}?{urlencode({'token': token})}"

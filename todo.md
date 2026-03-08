@@ -13,6 +13,9 @@
 - [x] Add machine-readable demo report script for fast go/no-go checks.
 - [x] Remove unused `pending_confirmations` runtime flow now that lead session actions are immediate.
 - [ ] Add CI target (manual workflow or nightly) for DB-backed eval scenarios (`tests/test_eval_scenarios.py`).
+- [x] Add short session-code routing for ambiguous multi-session inbound SMS from the same phone number.
+- [x] Deduplicate proposal-generation flow so agent and form-response paths share one policy/search/proposal helper.
+- [x] Improve ambiguous multi-session routing with code-only disambiguation and recent-session hint reuse.
 
 ## DevOps / Quality
 - [x] Add repo-level `AGENTS.md` guidance and reusable production shipping skill for future agents.
@@ -39,6 +42,14 @@
 - [x] Build `golfnow_adapter.py` scaffold implementing the same shape as `search_tee_times`.
 - [x] Add provider failure/retry behavior and fallback messaging.
 - [x] Add feature flag to switch between mock and GolfNow provider.
+
+## Code Quality (from review pass)
+- [ ] Add unit tests for `_parse_time_blocks`, `_parse_courses`, `_extract_option_number` (see `REVIEW_NOTES.md` section c)
+- [ ] Add unit tests for `normalize_phone` edge cases
+- [ ] Add unit tests for `generate_form_token` / `verify_form_token` round-trip + expiry
+- [ ] Remove `ensure_courses_table` DDL-on-every-call once schema migration is confirmed reliable (see `REVIEW_NOTES.md` section b)
+- [ ] Fix `async def twilio_sms_webhook` to not block the event loop (requires psycopg-async or run_in_executor)
+- [x] Harden active `session_code` uniqueness with DB constraint + retry logic to remove concurrent create race.
 
 ## Handoff Notes
 - Core deterministic flow is functional locally and in DB-backed smoke tests.

@@ -80,9 +80,10 @@ def test_proceed_without_them_generates_proposals(monkeypatch) -> None:
         },
     ]
 
+    # Patch the real function now that the one-liner wrapper was removed.
     monkeypatch.setattr(
         agent,
-        "_ensure_proposals",
+        "ensure_session_proposals",
         lambda *args, **kwargs: [
             {
                 "course": "Bethpage",

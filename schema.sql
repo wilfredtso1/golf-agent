@@ -27,12 +27,28 @@ CREATE TABLE IF NOT EXISTS sessions (
   lead_player_id UUID REFERENCES players(id),
   target_date DATE NOT NULL,
   candidate_courses JSONB NOT NULL,
+  session_code TEXT,
   status TEXT NOT NULL DEFAULT 'collecting',
   form_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT sessions_status_chk CHECK (status IN ('collecting', 'searching', 'proposing', 'confirmed', 'closed', 'expired'))
+  CONSTRAINT sessions_status_chk CHECK (status IN ('collecting', 'searching', 'proposing', 'confirmed', 'closed', 'expired')),
+  CONSTRAINT sessions_session_code_chk CHECK (session_code IS NULL OR session_code ~ '^[0-9]{2,4}$')
 );
+
+ALTER TABLE sessions
+  ADD COLUMN IF NOT EXISTS session_code TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sessions_session_code_chk'
+  ) THEN
+    ALTER TABLE sessions
+      ADD CONSTRAINT sessions_session_code_chk
+      CHECK (session_code IS NULL OR session_code ~ '^[0-9]{2,4}$');
+  END IF;
+END$$;
 
 -- Session players: per-player responses within a session
 CREATE TABLE IF NOT EXISTS session_players (
@@ -93,6 +109,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS messages_inbound_sid_uidx
 
 CREATE INDEX IF NOT EXISTS idx_players_phone ON players(phone);
 CREATE INDEX IF NOT EXISTS idx_courses_name ON courses(name);
+CREATE INDEX IF NOT EXISTS idx_sessions_session_code_status ON sessions(session_code, status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sessions_active_session_code
+  ON sessions(session_code)
+  WHERE session_code IS NOT NULL
+    AND status IN ('collecting', 'searching', 'proposing');
 CREATE INDEX IF NOT EXISTS idx_session_players_session_id ON session_players(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session_player_created_at
   ON messages(session_id, player_id, created_at DESC);

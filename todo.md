@@ -10,6 +10,7 @@
 - [ ] Add openapi docs/examples for `/api/lead-trigger`, `/api/form-response`, `/api/session-status`.
 
 ## DevOps / Quality
+- [ ] Automate production schema migration step (instead of manual `railway run`).
 - [x] Create deployment runbook (`DEPLOYMENT.md`).
 - [x] Add GitHub Actions CI to run tests on push/PR.
 - [x] Add env-example contract test to prevent missing required variables.
@@ -24,6 +25,7 @@
 
 ## Data / Catalog
 - [x] Add persistent `courses` table and keep snapshots updated from proposals.
+- [x] Apply latest DB schema in production and seed shared courses catalog.
 - [ ] Add course metadata enrichment (location, tee-sheet provider id, borough/region tags).
 
 ## GolfNow Integration

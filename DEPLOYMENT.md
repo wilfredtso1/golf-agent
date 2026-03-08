@@ -96,3 +96,29 @@ railway scale --service golf-agent --environment production --us-east4-eqdc4a 1 
   - Use exact Supabase pooler URI and URL-encode password.
 - `Network is unreachable` to `db.<project>.supabase.co`
   - Use Supabase **pooler** URI, not direct DB host.
+
+## Production schema + seed
+
+Apply latest schema to production DB:
+
+```bash
+cd /Users/wilfredtso/golf-agent
+railway run python3 - <<'PY'
+from pathlib import Path
+import os
+import psycopg
+
+sql = Path('schema.sql').read_text()
+with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+    with conn.cursor() as cur:
+        cur.execute(sql)
+print('SCHEMA_APPLIED')
+PY
+```
+
+Seed shared courses in production:
+
+```bash
+cd /Users/wilfredtso/golf-agent
+railway run python3 dev_seed_courses.py
+```

@@ -8,7 +8,7 @@
 
 ## Architecture
 - Backend: FastAPI webhook + API endpoints.
-- Data: Postgres/Supabase (`players`, `sessions`, `session_players`, `messages`, `tee_time_proposals`).
+- Data: Postgres/Supabase (`players`, `sessions`, `session_players`, `messages`, `tee_time_proposals`, `courses`).
 - Messaging: Twilio SMS (with local `/dev/simulate-sms` fallback).
 - Agent runtime:
   - Context assembly from DB
@@ -34,6 +34,10 @@
   - change courses
   - all executed only after `CONFIRM ACTION <token>`.
 - GitHub + Railway deployment path now operational; production smoke checks pass.
+- Added persistent `courses` catalog updated from proposal generation (latest price + booking URL snapshots).
+- Railway production service is running in US East (`us-east4-eqdc4a`) with `/health` and `/dev/simulate-sms` returning 200.
+- Course catalog endpoint now supports query filtering and form context now includes shared course suggestions.
+- Form flow now reads shared course suggestions and can add new course names into the shared catalog.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -42,4 +46,4 @@ After each completed implementation step, update this file:
 3. If goals changed, update **Goals**.
 
 ## Last Updated
-- 2026-03-08: Added deployment runbook, CI workflow, and env-contract test coverage.
+- 2026-03-08: Added deployment runbook, CI workflow, env-contract test coverage, validated Railway US-East production deployment, added persistent courses catalog, wired shared course suggestions into form flows, and added persistent course upserts from form + lead-trigger interactions.

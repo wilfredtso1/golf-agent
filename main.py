@@ -21,9 +21,11 @@ from policy_engine import evaluate_session
 from token_utils import InvalidFormToken, generate_form_token, verify_form_token
 from tools import (
     get_latest_proposals,
+    list_courses,
     get_session_state,
     list_session_players,
     replace_tee_time_proposals,
+    upsert_course_snapshot,
     update_session_status,
 )
 from twilio_helpers import InvalidPhoneNumber, normalize_phone, send_sms, validate_twilio_signature
@@ -84,6 +86,29 @@ class DevSimulateSmsPayload(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/courses")
+def courses(q: Optional[str] = None, limit: int = 100) -> dict[str, object]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            rows = list_courses(cur, query=q, limit=limit)
+    return {
+        "ok": True,
+        "count": len(rows),
+        "courses": [
+            {
+                "id": str(row["id"]),
+                "name": row["name"],
+                "default_booking_url": row["default_booking_url"],
+                "latest_price_per_player": float(row["latest_price_per_player"]) if row["latest_price_per_player"] is not None else None,
+                "latest_currency": row["latest_currency"],
+                "latest_seen_at": row["latest_seen_at"].isoformat() if row["latest_seen_at"] else None,
+                "metadata": row["metadata"] or {},
+            }
+            for row in rows
+        ],
+    }
 
 
 @app.post("/jobs/reminders")
@@ -150,6 +175,13 @@ def lead_trigger(payload: LeadTriggerPayload) -> dict[str, object]:
     with get_conn() as conn:
         with conn.cursor() as cur:
             lead_player_id = _get_or_create_player(cur, lead_phone, payload.lead_name)
+            for course in cleaned_courses:
+                upsert_course_snapshot(
+                    cur,
+                    name=course,
+                    booking_url=None,
+                    price_per_player=None,
+                )
             cur.execute(
                 """
                 INSERT INTO sessions (lead_player_id, target_date, candidate_courses, status)
@@ -338,6 +370,7 @@ def get_form_context(token: str = Query(..., min_length=20)) -> dict[str, object
                 (session_id, player_id),
             )
             row = cur.fetchone()
+            shared_courses = list_courses(cur, limit=50)
 
     if not row:
         raise HTTPException(status_code=404, detail="Session/player combination not found")
@@ -360,6 +393,7 @@ def get_form_context(token: str = Query(..., min_length=20)) -> dict[str, object
         "lead_name": row["lead_name"] or "Your lead",
         "target_date": row["target_date"].isoformat(),
         "candidate_courses": row["candidate_courses"] or [],
+        "shared_courses": [course["name"] for course in shared_courses],
         "is_new_player": is_new_player,
         "agent_phone": SETTINGS.twilio_phone_number,
     }
@@ -406,6 +440,14 @@ def submit_form_response(payload: FormResponsePayload) -> dict[str, object]:
 
             if payload.player_profile:
                 _update_player_profile(cur, player_id, payload.player_profile)
+
+            for course in approved_courses:
+                upsert_course_snapshot(
+                    cur,
+                    name=course,
+                    booking_url=None,
+                    price_per_player=None,
+                )
 
             session = get_session_state(cur, session_id)
             if session:

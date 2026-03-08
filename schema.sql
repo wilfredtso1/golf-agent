@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS session_players (
   CONSTRAINT session_players_status_chk CHECK (status IN ('invited', 'confirmed', 'declined', 'unresponsive'))
 );
 
+-- Courses: canonical catalog + latest observed market snapshot
+CREATE TABLE IF NOT EXISTS courses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  default_booking_url TEXT,
+  latest_price_per_player NUMERIC,
+  latest_currency TEXT NOT NULL DEFAULT 'USD',
+  latest_seen_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Tee time proposals: options found and proposed to lead
 CREATE TABLE IF NOT EXISTS tee_time_proposals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -79,6 +92,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS messages_inbound_sid_uidx
   WHERE direction = 'inbound' AND provider_message_sid IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_players_phone ON players(phone);
+CREATE INDEX IF NOT EXISTS idx_courses_name ON courses(name);
 CREATE INDEX IF NOT EXISTS idx_session_players_session_id ON session_players(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session_player_created_at
   ON messages(session_id, player_id, created_at DESC);
@@ -92,5 +106,11 @@ EXECUTE FUNCTION set_updated_at();
 DROP TRIGGER IF EXISTS sessions_set_updated_at ON sessions;
 CREATE TRIGGER sessions_set_updated_at
 BEFORE UPDATE ON sessions
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS courses_set_updated_at ON courses;
+CREATE TRIGGER courses_set_updated_at
+BEFORE UPDATE ON courses
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();

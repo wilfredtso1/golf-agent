@@ -49,6 +49,20 @@ This hits `POST /dev/simulate-sms` and exercises the same backend processing as 
 curl -sS "http://127.0.0.1:8010/api/session-status?session_id=<SESSION_UUID>"
 ```
 
+### Course catalog
+
+Seed canonical courses:
+
+```bash
+python3 dev_seed_courses.py
+```
+
+Inspect persistent course snapshots:
+
+```bash
+curl -sS http://127.0.0.1:8010/api/courses
+```
+
 ### Reminder/escalation job (cron target)
 
 ```bash
@@ -80,4 +94,28 @@ Run DB-backed integration tests (includes proposal + confirm lifecycle):
 
 ```bash
 RUN_DB_INTEGRATION_TESTS=1 python3 -m pytest -q tests/test_integration_flow.py
+```
+
+## One-command demo flow
+
+Run a full demo script (trigger -> player reply -> proposal -> lead confirm):
+
+```bash
+python3 dev_demo_flow.py --base-url http://127.0.0.1:8010
+```
+
+Against Railway:
+
+```bash
+python3 dev_demo_flow.py --base-url https://golf-agent-production.up.railway.app
+```
+
+Default seeded demo courses:
+`Maple Moor, Silver Lake, La Tourette, Dyker, Pelham, Saxon Woods, Forest Hills`
+
+
+Search shared courses:
+
+```bash
+curl -sS "http://127.0.0.1:8010/api/courses?q=maple&limit=10"
 ```

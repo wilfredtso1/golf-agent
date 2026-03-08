@@ -7,6 +7,7 @@ type FormContext = {
   lead_name: string;
   target_date: string;
   candidate_courses: string[];
+  shared_courses?: string[];
   is_new_player: boolean;
   agent_phone: string;
 };
@@ -39,6 +40,7 @@ function GolfSessionForm() {
 
   const [isAttending, setIsAttending] = useState<boolean | null>(null);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
+  const [customCourse, setCustomCourse] = useState('');
   const [selectedTimeSlots, setSelectedTimeSlots] = useState<string[]>([]);
   const [playerName, setPlayerName] = useState('');
   const [generalAvailability, setGeneralAvailability] = useState<string[]>([]);
@@ -82,6 +84,15 @@ function GolfSessionForm() {
     setSelectedCourses(prev =>
       prev.includes(course) ? prev.filter(c => c !== course) : [...prev, course]
     );
+  };
+
+  const handleAddCustomCourse = () => {
+    const normalized = customCourse.trim();
+    if (!normalized) return;
+    if (!selectedCourses.includes(normalized)) {
+      setSelectedCourses(prev => [...prev, normalized]);
+    }
+    setCustomCourse('');
   };
 
   const handleTimeSlotToggle = (slotId: string) => {
@@ -180,6 +191,8 @@ function GolfSessionForm() {
     day: 'numeric',
   });
   const candidateCourses = context.candidate_courses;
+  const sharedCourses = context.shared_courses ?? [];
+  const displayCourses = Array.from(new Set([...candidateCourses, ...sharedCourses]));
   const isNewPlayer = context.is_new_player;
   const agentPhone = context.agent_phone;
 
@@ -250,7 +263,7 @@ function GolfSessionForm() {
                 <h3>Which courses work for you?</h3>
                 <p className="section-hint">Select all that you'd be happy playing</p>
                 <div className="checkbox-group courses">
-                  {candidateCourses.map(course => (
+                  {displayCourses.map(course => (
                     <label key={course} className={`checkbox-card ${selectedCourses.includes(course) ? 'checked' : ''}`}>
                       <input
                         type="checkbox"
@@ -265,6 +278,21 @@ function GolfSessionForm() {
                       <span className="checkbox-label">{course}</span>
                     </label>
                   ))}
+                </div>
+                <div className="form-field" style={{ marginTop: '12px' }}>
+                  <label htmlFor="customCourse">Add another course</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      id="customCourse"
+                      value={customCourse}
+                      onChange={e => setCustomCourse(e.target.value)}
+                      placeholder="Enter a course name"
+                    />
+                    <button type="button" onClick={handleAddCustomCourse}>
+                      Add
+                    </button>
+                  </div>
                 </div>
               </div>
 

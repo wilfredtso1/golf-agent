@@ -13,6 +13,7 @@
 - [x] Create deployment runbook (`DEPLOYMENT.md`).
 - [x] Add GitHub Actions CI to run tests on push/PR.
 - [x] Add env-example contract test to prevent missing required variables.
+- [x] Validate Railway production deployment in US East with live smoke checks.
 - [ ] Add CI job for DB-backed integration tests behind secrets/environment.
 
 ## Twilio Go-Live
@@ -21,8 +22,13 @@
 - [ ] Set `SMS_SEND_ENABLED=true` in deployed env.
 - [ ] Run real-phone end-to-end test from trigger -> confirm.
 
+## Data / Catalog
+- [x] Add persistent `courses` table and keep snapshots updated from proposals.
+- [ ] Add course metadata enrichment (location, tee-sheet provider id, borough/region tags).
+
 ## GolfNow Integration
-- [ ] Build `golfnow_adapter.py` implementing the same shape as `search_tee_times`.
+- [ ] Build semantic course retrieval over shared catalog for GolfNow matching.
+- [ ] Build `golfnow_adapter.py` implementing the same shape as `search_tee_times` and leveraging shared course catalog candidates.
 - [ ] Add provider failure/retry behavior and fallback messaging.
 - [ ] Add feature flag to switch between mock and GolfNow provider.
 

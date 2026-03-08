@@ -8,6 +8,109 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 
 
+def ensure_courses_table(cur) -> None:
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS courses (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL UNIQUE,
+          default_booking_url TEXT,
+          latest_price_per_player NUMERIC,
+          latest_currency TEXT NOT NULL DEFAULT 'USD',
+          latest_seen_at TIMESTAMPTZ,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+
+
+def upsert_course_snapshot(
+    cur,
+    *,
+    name: str,
+    booking_url: str | None,
+    price_per_player: float | None,
+    currency: str = "USD",
+) -> None:
+    ensure_courses_table(cur)
+    clean_name = name.strip()
+    if not clean_name:
+        return
+    cur.execute(
+        """
+        INSERT INTO courses (
+          name,
+          default_booking_url,
+          latest_price_per_player,
+          latest_currency,
+          latest_seen_at,
+          metadata
+        )
+        VALUES (%s, %s, %s, %s, now(), %s)
+        ON CONFLICT (name) DO UPDATE
+        SET default_booking_url = EXCLUDED.default_booking_url,
+            latest_price_per_player = EXCLUDED.latest_price_per_player,
+            latest_currency = EXCLUDED.latest_currency,
+            latest_seen_at = now(),
+            metadata = courses.metadata || EXCLUDED.metadata,
+            updated_at = now()
+        """,
+        (
+            clean_name,
+            booking_url,
+            price_per_player,
+            currency,
+            Jsonb({"source": "proposal_generation"}),
+        ),
+    )
+
+
+def list_courses(cur, *, query: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+    ensure_courses_table(cur)
+    if query and query.strip():
+        cur.execute(
+            """
+            SELECT
+              id,
+              name,
+              default_booking_url,
+              latest_price_per_player,
+              latest_currency,
+              latest_seen_at,
+              metadata,
+              created_at,
+              updated_at
+            FROM courses
+            WHERE name ILIKE %s
+            ORDER BY name ASC
+            LIMIT %s
+            """,
+            (f"%{query.strip()}%", max(1, min(limit, 500))),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT
+              id,
+              name,
+              default_booking_url,
+              latest_price_per_player,
+              latest_currency,
+              latest_seen_at,
+              metadata,
+              created_at,
+              updated_at
+            FROM courses
+            ORDER BY name ASC
+            LIMIT %s
+            """,
+            (max(1, min(limit, 500)),),
+        )
+    return cur.fetchall()
+
+
 def get_player_profile(cur, player_id: UUID) -> dict[str, object] | None:
     cur.execute(
         """
@@ -178,6 +281,12 @@ def replace_tee_time_proposals(cur, session_id: UUID, options: list[dict[str, ob
 
     created: list[dict[str, object]] = []
     for option in options:
+        upsert_course_snapshot(
+            cur,
+            name=str(option["course"]),
+            booking_url=option.get("booking_url"),
+            price_per_player=float(option["price_per_player"]) if option.get("price_per_player") is not None else None,
+        )
         cur.execute(
             """
             INSERT INTO tee_time_proposals (session_id, course, tee_time, price_per_player, booking_url, status)

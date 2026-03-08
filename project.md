@@ -46,6 +46,7 @@
 - Added explicit lead command handling for `PROCEED WITHOUT THEM` to continue proposal generation after unresponsive escalations.
 - Added structured logs for session/player status transitions in `tools.py` to improve production traceability.
 - Added concrete API example docs for lead trigger, session status, and form response flows in `README.md`.
+- Added automated Railway schema-apply script (`scripts/apply_schema_railway.sh`) and wired it into deployment docs.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -62,3 +63,4 @@ After each completed implementation step, update this file:
 - 2026-03-08: Implemented and unit-tested `PROCEED WITHOUT THEM` lead command behavior for escalation follow-through.
 - 2026-03-08: Added state-transition logging for session and player status changes across core write paths.
 - 2026-03-08: Added runnable API examples for `/api/lead-trigger`, `/api/session-status`, and `/api/form-response`.
+- 2026-03-08: Automated production schema migration command via script and updated `DEPLOYMENT.md`.

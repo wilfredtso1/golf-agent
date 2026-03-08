@@ -13,7 +13,7 @@
 
 ## DevOps / Quality
 - [x] Add repo-level `AGENTS.md` guidance and reusable production shipping skill for future agents.
-- [ ] Automate production schema migration step (instead of manual `railway run`).
+- [x] Automate production schema migration step (scripted via `scripts/apply_schema_railway.sh`).
 - [x] Create deployment runbook (`DEPLOYMENT.md`).
 - [x] Add GitHub Actions CI to run tests on push/PR.
 - [x] Add env-example contract test to prevent missing required variables.

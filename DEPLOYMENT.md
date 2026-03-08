@@ -103,17 +103,7 @@ Apply latest schema to production DB:
 
 ```bash
 cd /Users/wilfredtso/golf-agent
-railway run python3 - <<'PY'
-from pathlib import Path
-import os
-import psycopg
-
-sql = Path('schema.sql').read_text()
-with psycopg.connect(os.environ['DATABASE_URL']) as conn:
-    with conn.cursor() as cur:
-        cur.execute(sql)
-print('SCHEMA_APPLIED')
-PY
+./scripts/apply_schema_railway.sh golf-agent production
 ```
 
 Seed shared courses in production:

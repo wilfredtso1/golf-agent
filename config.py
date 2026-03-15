@@ -24,6 +24,8 @@ class Settings:
     form_token_ttl_seconds: int
     form_base_url: str
     cors_allow_origins: tuple[str, ...]
+    golfnow_scrape_timeout_ms: int
+    golfnow_scrape_headless: bool
 
 
 def _required_env(name: str) -> str:
@@ -60,4 +62,6 @@ SETTINGS = Settings(
     form_token_ttl_seconds=int(os.getenv("FORM_TOKEN_TTL_SECONDS", "604800")),
     form_base_url=os.getenv("FORM_BASE_URL", "http://127.0.0.1:5173/golf-form"),
     cors_allow_origins=_csv_env("CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
+    golfnow_scrape_timeout_ms=int(os.getenv("GOLFNOW_SCRAPE_TIMEOUT_MS", "20000")),
+    golfnow_scrape_headless=_bool_env("GOLFNOW_SCRAPE_HEADLESS", True),
 )

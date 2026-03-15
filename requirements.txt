@@ -6,3 +6,4 @@ twilio==9.6.5
 python-multipart==0.0.20
 httpx==0.28.1
 pytest==8.3.5
+playwright==1.49.0

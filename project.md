@@ -57,6 +57,13 @@
 - Hardened active `session_code` uniqueness with DB-enforced partial unique index + insert retry/savepoint logic to eliminate concurrent create races.
 - Applied the latest schema to Railway production and verified `uq_sessions_active_session_code` exists.
 - Fixed `scripts/apply_schema_railway.sh` to connect using `DATABASE_URL` explicitly so future migrations are reliable.
+- Began performance-upgrade execution brief rollout; completed Slice 1 by removing runtime `courses` DDL calls from hot paths so schema ownership stays migration-only.
+- Completed execution-brief Slice 2: `/api/form-response` now enforces allowed time-block enums and session-candidate course integrity before persistence.
+- Completed execution-brief Slice 3: decoupled outbound SMS network sends from primary DB transaction windows in lead-trigger, inbound webhook side-messages, and form-response lead notifications.
+- Completed execution-brief Slice 4: Twilio webhook now offloads sync processing to threadpool (`run_in_threadpool`) to avoid event-loop blocking.
+- Completed execution-brief Slice 5 query-hygiene pass: split message-history query paths for index-friendly SQL, bounded history limit, capped active-session list queries, and added supporting DB indexes in schema.
+- Completed execution-brief Slice 6: standardized structured `key=value` log fields across main.py warning/info paths; upgraded GolfNow provider error from `logger.warning` to `logger.exception` to preserve stack traces.
+- Implemented Playwright-based GolfNow scraper in `golfnow_adapter.py`: headless Chromium via ThreadPoolExecutor(max_workers=3), per-course timeout budget, UTC conversion via `zoneinfo`, hybrid course resolution (DB-canonical name if matched, raw name passthrough otherwise), auto-upsert of newly-discovered courses into the `courses` catalog. Added `nixpacks.toml` for Railway Chromium install. Added `GOLFNOW_SCRAPE_TIMEOUT_MS` + `GOLFNOW_SCRAPE_HEADLESS` config fields. 10 new unit tests in `tests/test_golfnow_adapter.py`; full suite 50 passed.
 
 ## Update Protocol
 After each completed implementation step, update this file:
@@ -89,3 +96,10 @@ After each completed implementation step, update this file:
 - 2026-03-08: Staff engineer code-review pass — dead code removal, DRY consolidation, silent-failure fix on Twilio webhook, phone masking in logs, LLM prompt hygiene. See `REVIEW_NOTES.md`.
 - 2026-03-08: Fixed session-code TOCTOU risk with DB unique index over active sessions and retried insert allocation.
 - 2026-03-08: Applied production schema and verified active session-code unique index; fixed migration script connection behavior.
+- 2026-03-08: Started `EXECUTION_BRIEF_perf_upgrade.md`; completed Slice 1 (removed runtime courses-table DDL from `tools.py`, updated snapshot test contract, full pytest green).
+- 2026-03-08: Completed execution-brief Slice 2 with strict `/api/form-response` validation and new endpoint/unit coverage (`tests/test_form_response_validation.py`).
+- 2026-03-08: Completed execution-brief Slice 3 by queueing side-message fan-out inside transaction and delivering SMS/log persistence post-commit; validated with unit + DB integration suites.
+- 2026-03-08: Completed execution-brief Slice 4 by running inbound SMS processing in FastAPI threadpool from async webhook.
+- 2026-03-08: Completed execution-brief Slice 5 (query/index hygiene) and validated with full unit + DB integration suites.
+- 2026-03-15: Completed execution-brief Slice 6 (observability/reliability hardening): structured log fields, GolfNow exception logging, all tests green.
+- 2026-03-15: Implemented Playwright GolfNow scraper with hybrid course resolution, auto-catalog upsert, Railway Chromium config, and 10 new unit tests (50 total passing).

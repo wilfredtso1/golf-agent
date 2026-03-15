@@ -12,8 +12,8 @@ def test_upsert_course_snapshot_executes_insert_with_conflict() -> None:
         price_per_player=72.0,
     )
 
-    # table ensure + insert
-    assert cur.execute.call_count >= 2
+    # runtime path should only perform the upsert; schema is migration-owned.
+    assert cur.execute.call_count == 1
     final_sql = cur.execute.call_args_list[-1].args[0]
     assert "INSERT INTO courses" in final_sql
     assert "ON CONFLICT (name) DO UPDATE" in final_sql

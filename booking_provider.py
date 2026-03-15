@@ -31,7 +31,7 @@ def search_tee_times(
                 return rows
             logger.warning("golfnow_provider_empty_result_fallback provider=golfnow")
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("golfnow_provider_error_fallback provider=golfnow error=%s", exc)
+            logger.exception("golfnow_provider_error_fallback provider=golfnow error=%s", exc)
     return search_mock_tee_times(
         target_date=target_date,
         time_windows=time_windows,

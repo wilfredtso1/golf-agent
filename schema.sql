@@ -115,8 +115,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sessions_active_session_code
   WHERE session_code IS NOT NULL
     AND status IN ('collecting', 'searching', 'proposing');
 CREATE INDEX IF NOT EXISTS idx_session_players_session_id ON session_players(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_players_player_id ON session_players(player_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_status_created_at ON sessions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_session_player_created_at
   ON messages(session_id, player_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_player_created_at
+  ON messages(player_id, created_at DESC);
 
 DROP TRIGGER IF EXISTS players_set_updated_at ON players;
 CREATE TRIGGER players_set_updated_at

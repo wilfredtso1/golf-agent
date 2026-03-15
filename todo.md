@@ -13,6 +13,7 @@
 - [x] Add machine-readable demo report script for fast go/no-go checks.
 - [x] Remove unused `pending_confirmations` runtime flow now that lead session actions are immediate.
 - [ ] Add CI target (manual workflow or nightly) for DB-backed eval scenarios (`tests/test_eval_scenarios.py`).
+- [x] Slice 6: observability/reliability hardening — standardized structured log fields, upgraded GolfNow error logging from warning to exception (preserves stack trace), aligned log message format across main.py.
 - [x] Add short session-code routing for ambiguous multi-session inbound SMS from the same phone number.
 - [x] Deduplicate proposal-generation flow so agent and form-response paths share one policy/search/proposal helper.
 - [x] Improve ambiguous multi-session routing with code-only disambiguation and recent-session hint reuse.
@@ -47,8 +48,11 @@
 - [ ] Add unit tests for `_parse_time_blocks`, `_parse_courses`, `_extract_option_number` (see `REVIEW_NOTES.md` section c)
 - [ ] Add unit tests for `normalize_phone` edge cases
 - [ ] Add unit tests for `generate_form_token` / `verify_form_token` round-trip + expiry
-- [ ] Remove `ensure_courses_table` DDL-on-every-call once schema migration is confirmed reliable (see `REVIEW_NOTES.md` section b)
-- [ ] Fix `async def twilio_sms_webhook` to not block the event loop (requires psycopg-async or run_in_executor)
+- [x] Remove `ensure_courses_table` DDL-on-every-call once schema migration is confirmed reliable (see `REVIEW_NOTES.md` section b)
+- [x] Enforce strict `/api/form-response` validation for time-block enums and session-candidate course integrity.
+- [x] Decouple outbound SMS sends from core DB transaction windows in lead-trigger/webhook/form-response paths.
+- [x] Fix `async def twilio_sms_webhook` to not block the event loop (via FastAPI threadpool dispatch).
+- [x] Improve query hygiene and add supporting indexes for active-session/message-history lookups.
 - [x] Harden active `session_code` uniqueness with DB constraint + retry logic to remove concurrent create race.
 - [x] Apply schema in production and verify `uq_sessions_active_session_code` exists.
 - [x] Fix Railway schema apply script to connect using `DATABASE_URL` explicitly.
@@ -58,3 +62,5 @@
 - Railway production deploy is live with successful `/health` and `/dev/simulate-sms` checks.
 - Use `project.md` for architecture/current-state context before resuming work.
 - Run `python3 -m pytest -q` first; run DB integration tests when needed.
+- Execution brief active: `EXECUTION_BRIEF_perf_upgrade.md`.
+- Next managed slice: Slice 6 (observability/reliability hardening; then reassess whether dedicated pooling dependency is still needed).

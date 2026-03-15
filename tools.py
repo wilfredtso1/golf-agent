@@ -16,24 +16,6 @@ def _get_session_status(cur, session_id: UUID) -> str | None:
     return row["status"] if row else None
 
 
-def ensure_courses_table(cur) -> None:
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS courses (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          name TEXT NOT NULL UNIQUE,
-          default_booking_url TEXT,
-          latest_price_per_player NUMERIC,
-          latest_currency TEXT NOT NULL DEFAULT 'USD',
-          latest_seen_at TIMESTAMPTZ,
-          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-        """
-    )
-
-
 def upsert_course_snapshot(
     cur,
     *,
@@ -43,7 +25,6 @@ def upsert_course_snapshot(
     currency: str = "USD",
     metadata: dict[str, object] | None = None,
 ) -> None:
-    ensure_courses_table(cur)
     clean_name = name.strip()
     if not clean_name:
         return
@@ -80,7 +61,6 @@ def upsert_course_snapshot(
 
 
 def list_courses(cur, *, query: str | None = None, limit: int = 100) -> list[dict[str, object]]:
-    ensure_courses_table(cur)
     if query and query.strip():
         cur.execute(
             """
@@ -231,17 +211,30 @@ def get_player_session_state(cur, session_id: UUID, player_id: UUID) -> dict[str
 
 
 def get_recent_messages(cur, session_id: UUID | None, player_id: UUID, limit: int = 10) -> list[dict[str, object]]:
-    cur.execute(
-        """
-        SELECT direction, body, created_at
-        FROM messages
-        WHERE player_id = %s
-          AND (%s::uuid IS NULL OR session_id = %s)
-        ORDER BY created_at DESC
-        LIMIT %s
-        """,
-        (player_id, session_id, session_id, limit),
-    )
+    bounded_limit = max(1, min(limit, 200))
+    if session_id is None:
+        cur.execute(
+            """
+            SELECT direction, body, created_at
+            FROM messages
+            WHERE player_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (player_id, bounded_limit),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT direction, body, created_at
+            FROM messages
+            WHERE player_id = %s
+              AND session_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (player_id, session_id, bounded_limit),
+        )
     rows = cur.fetchall()
     rows.reverse()
     return [

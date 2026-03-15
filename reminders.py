@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from db import get_conn
@@ -8,6 +9,7 @@ from twilio_helpers import send_sms
 
 REMINDER_AFTER_HOURS = 4
 ESCALATE_AFTER_HOURS = 8
+logger = logging.getLogger("golf-agent")
 
 
 def classify_reminder_action(
@@ -111,4 +113,5 @@ def _safe_send_sms(phone: str, body: str) -> str | None:
     try:
         return send_sms(phone, body)
     except Exception:  # pragma: no cover - provider/network failures
+        logger.exception("Reminder SMS send failed to ***%s", phone[-4:] if phone else "????")
         return None

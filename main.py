@@ -8,6 +8,7 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from psycopg import errors
@@ -38,6 +39,7 @@ logging.basicConfig(level=logging.INFO)
 
 ACTIVE_SESSION_STATUSES = ("collecting", "searching", "proposing")
 DEFAULT_TIME_BLOCKS = ["early_morning", "late_morning", "early_afternoon"]
+ALLOWED_TIME_BLOCKS = frozenset(DEFAULT_TIME_BLOCKS)
 _SESSION_CODE_INSERT_MAX_ATTEMPTS = 8
 _SESSION_CODE_PREFIX_RE = re.compile(r"^\s*(\d{2,4})\s*[:\-]?\s*(.*)$")
 _SESSION_CODE_INLINE_RE = re.compile(r"\b(?:session|for)\s+(\d{2,4})\b", re.IGNORECASE)
@@ -88,6 +90,52 @@ class DevSimulateSmsPayload(BaseModel):
     from_number: str
     body: str = ""
     message_sid: str = Field(default_factory=lambda: f"dev-{uuid4().hex}")
+
+
+def _clean_non_empty_strings(raw_values: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    for value in raw_values:
+        trimmed = value.strip()
+        if trimmed:
+            cleaned.append(trimmed)
+    return cleaned
+
+
+def _validated_form_preferences(
+    *,
+    is_attending: bool,
+    approved_courses: list[str],
+    available_time_blocks: list[str],
+    candidate_courses: list[str],
+) -> tuple[list[str], list[str]]:
+    if not is_attending:
+        return [], []
+
+    cleaned_courses = _clean_non_empty_strings(approved_courses)
+    cleaned_time_blocks = _clean_non_empty_strings(available_time_blocks)
+
+    if not cleaned_courses:
+        raise HTTPException(status_code=400, detail="At least one approved course is required when attending")
+    if not cleaned_time_blocks:
+        raise HTTPException(status_code=400, detail="At least one available time block is required when attending")
+
+    invalid_time_blocks = sorted({slot for slot in cleaned_time_blocks if slot not in ALLOWED_TIME_BLOCKS})
+    if invalid_time_blocks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid time blocks: {', '.join(invalid_time_blocks)}",
+        )
+
+    course_lookup = {course.lower(): course for course in candidate_courses if isinstance(course, str)}
+    invalid_courses = sorted({course for course in cleaned_courses if course.lower() not in course_lookup})
+    if invalid_courses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Approved courses must be from session candidates. Invalid: {', '.join(invalid_courses)}",
+        )
+
+    normalized_courses = [course_lookup[course.lower()] for course in cleaned_courses]
+    return normalized_courses, cleaned_time_blocks
 
 
 @app.get("/health")
@@ -246,34 +294,39 @@ def lead_trigger(payload: LeadTriggerPayload) -> dict[str, object]:
 
     invite_results: list[dict[str, str]] = []
     if payload.send_invites:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                for target in invite_targets:
-                    token = generate_form_token(str(session_id), str(target["player_id"]))
-                    form_link = build_form_url(token)
-                    message_body = (
-                        f"Hey {target['name']}, this is Golf Agent helping "
-                        f"{payload.lead_name or 'your lead'} coordinate a round on {payload.target_date.isoformat()} "
-                        f"(Session {session_code}). "
-                        f"Please submit your availability: {form_link}"
-                    )
-                    try:
-                        provider_sid = send_sms(str(target["phone"]), message_body)
+        outbound_logs: list[tuple[UUID, UUID, str, str]] = []
+        for target in invite_targets:
+            token = generate_form_token(str(session_id), str(target["player_id"]))
+            form_link = build_form_url(token)
+            message_body = (
+                f"Hey {target['name']}, this is Golf Agent helping "
+                f"{payload.lead_name or 'your lead'} coordinate a round on {payload.target_date.isoformat()} "
+                f"(Session {session_code}). "
+                f"Please submit your availability: {form_link}"
+            )
+            try:
+                provider_sid = send_sms(str(target["phone"]), message_body)
+                outbound_logs.append((session_id, target["player_id"], message_body, provider_sid))
+                invite_results.append(
+                    {"phone": str(target["phone"]), "status": "sent", "message_sid": provider_sid}
+                )
+            except Exception as exc:  # pragma: no cover - network/provider failures
+                # Mask phone to last 4 digits — full numbers must not appear in stored logs.
+                logger.exception("Failed to send invite SMS to ***%s", str(target["phone"])[-4:])
+                invite_results.append(
+                    {"phone": str(target["phone"]), "status": "failed", "error": str(exc)}
+                )
+
+        if outbound_logs:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    for queued_session_id, queued_player_id, body, provider_sid in outbound_logs:
                         insert_outbound_message(
                             cur,
-                            session_id=session_id,
-                            player_id=target["player_id"],
-                            body=message_body,
+                            session_id=queued_session_id,
+                            player_id=queued_player_id,
+                            body=body,
                             provider_message_sid=provider_sid,
-                        )
-                        invite_results.append(
-                            {"phone": str(target["phone"]), "status": "sent", "message_sid": provider_sid}
-                        )
-                    except Exception as exc:  # pragma: no cover - network/provider failures
-                        # Mask phone to last 4 digits — full numbers must not appear in stored logs.
-                        logger.exception("Failed to send invite SMS to ***%s", str(target["phone"])[-4:])
-                        invite_results.append(
-                            {"phone": str(target["phone"]), "status": "failed", "error": str(exc)}
                         )
 
     return {
@@ -292,10 +345,10 @@ async def twilio_sms_webhook(request: Request) -> Response:
 
     signature = request.headers.get("X-Twilio-Signature")
     if SETTINGS.twilio_validate_signature and not validate_twilio_signature(str(request.url), form_data, signature):
-        logger.warning("Rejected Twilio webhook with invalid signature")
+        logger.warning("twilio_signature_rejected url=%s", str(request.url))
         raise HTTPException(status_code=403, detail="Invalid Twilio signature")
 
-    reply_text = _process_inbound_sms(form_data)
+    reply_text = await run_in_threadpool(_process_inbound_sms, form_data)
 
     twiml = MessagingResponse()
     twiml.message(reply_text)
@@ -319,9 +372,10 @@ def _process_inbound_sms(form_data: dict[str, str]) -> str:
     try:
         from_number = normalize_phone(from_number_raw)
     except InvalidPhoneNumber as exc:
-        logger.warning("Invalid sender number: %s", from_number_raw)
+        logger.warning("invalid_sender_number raw=%s", from_number_raw)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    queued_side_messages: list[tuple[UUID, UUID, str]] = []
     with get_conn() as conn:
         with conn.cursor() as cur:
             player_id = _get_or_create_player(cur, from_number)
@@ -337,7 +391,7 @@ def _process_inbound_sms(form_data: dict[str, str]) -> str:
             )
 
             if inbound_id is None:
-                logger.info("Duplicate inbound sid ignored: %s", message_sid)
+                logger.info("duplicate_inbound_sid_ignored sid=%s", message_sid)
                 return ""
 
             if ambiguous:
@@ -348,19 +402,28 @@ def _process_inbound_sms(form_data: dict[str, str]) -> str:
                     result = process_inbound_message(cur, context, cleaned_body)
                     reply_text = result.reply_text
                     if result.should_broadcast and result.broadcast_text and session_id:
-                        _broadcast_message(cur, session_id, body=result.broadcast_text, exclude_player_id=player_id)
+                        _queue_broadcast_message(
+                            cur,
+                            session_id,
+                            body=result.broadcast_text,
+                            queue=queued_side_messages,
+                            exclude_player_id=player_id,
+                        )
                     if result.direct_messages and session_id:
                         for target_player_id, text in result.direct_messages:
-                            _send_message_to_player(cur, session_id, target_player_id, text)
+                            queued_side_messages.append((session_id, target_player_id, text))
                 except Exception:
                     # Log internally but reply with a safe generic message so Twilio
                     # gets a 200 (not a 500 that would trigger retries, causing the
                     # inbound dedup guard to silently swallow the retry instead of
                     # actually re-processing).
-                    logger.exception("Unhandled error processing inbound message sid=%s", message_sid)
+                    logger.exception("inbound_sms_processing_error sid=%s", message_sid)
                     reply_text = "Sorry, something went wrong on our end. Please try again in a moment."
 
             insert_outbound_message(cur, session_id=session_id, player_id=player_id, body=reply_text)
+
+    for queued_session_id, queued_player_id, body in queued_side_messages:
+        _send_message_to_player(queued_session_id, queued_player_id, body)
 
     return reply_text
 
@@ -429,18 +492,32 @@ def get_form_context(token: str = Query(..., min_length=20)) -> dict[str, object
 def submit_form_response(payload: FormResponsePayload) -> dict[str, object]:
     session_id, player_id = _parse_token_ids(payload.token)
 
-    if payload.is_attending:
-        if not payload.approved_courses:
-            raise HTTPException(status_code=400, detail="At least one approved course is required when attending")
-        if not payload.available_time_blocks:
-            raise HTTPException(status_code=400, detail="At least one available time block is required when attending")
-
     status = "confirmed" if payload.is_attending else "declined"
-    approved_courses = payload.approved_courses if payload.is_attending else []
-    available_time_blocks = payload.available_time_blocks if payload.is_attending else []
 
+    queued_side_messages: list[tuple[UUID, UUID, str]] = []
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT s.candidate_courses
+                FROM session_players sp
+                JOIN sessions s ON s.id = sp.session_id
+                WHERE sp.session_id = %s AND sp.player_id = %s
+                LIMIT 1
+                """,
+                (session_id, player_id),
+            )
+            membership = cur.fetchone()
+            if not membership:
+                raise HTTPException(status_code=404, detail="Session/player combination not found")
+
+            approved_courses, available_time_blocks = _validated_form_preferences(
+                is_attending=payload.is_attending,
+                approved_courses=payload.approved_courses,
+                available_time_blocks=payload.available_time_blocks,
+                candidate_courses=[c for c in membership.get("candidate_courses") or [] if isinstance(c, str)],
+            )
+
             cur.execute(
                 """
                 UPDATE session_players
@@ -482,7 +559,10 @@ def submit_form_response(payload: FormResponsePayload) -> dict[str, object]:
                 if proposals:
                     lead_id = session["lead_player_id"]
                     lead_message = _format_proposal_summary_for_sms(proposals)
-                    _send_message_to_player(cur, session_id, lead_id, lead_message)
+                    queued_side_messages.append((session_id, lead_id, lead_message))
+
+    for queued_session_id, queued_player_id, body in queued_side_messages:
+        _send_message_to_player(queued_session_id, queued_player_id, body)
 
     return {
         "ok": True,
@@ -562,6 +642,7 @@ def _resolve_active_session(cur, player_id: UUID, requested_session_code: str | 
         WHERE sp.player_id = %s
           AND s.status = ANY(%s)
         ORDER BY s.created_at DESC
+        LIMIT 25
         """,
         (player_id, list(ACTIVE_SESSION_STATUSES)),
     )
@@ -671,6 +752,7 @@ def _list_active_sessions_for_player(cur, player_id: UUID) -> list[dict[str, obj
         WHERE sp.player_id = %s
           AND s.status = ANY(%s)
         ORDER BY s.created_at DESC
+        LIMIT 25
         """,
         (player_id, list(ACTIVE_SESSION_STATUSES)),
     )
@@ -729,22 +811,33 @@ def _format_proposal_summary_for_sms(proposals: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
-def _send_message_to_player(cur, session_id: UUID, player_id: UUID, body: str) -> None:
-    cur.execute("SELECT phone FROM players WHERE id = %s", (player_id,))
-    row = cur.fetchone()
+def _send_message_to_player(session_id: UUID, player_id: UUID, body: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT phone FROM players WHERE id = %s", (player_id,))
+            row = cur.fetchone()
+
     provider_sid = None
     if row and row.get("phone"):
         try:
             provider_sid = send_sms(str(row["phone"]), body)
         except Exception:  # pragma: no cover - provider/network errors
             logger.exception("Failed to send SMS to player_id=%s", player_id)
-    insert_outbound_message(cur, session_id=session_id, player_id=player_id, body=body, provider_message_sid=provider_sid)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            insert_outbound_message(cur, session_id=session_id, player_id=player_id, body=body, provider_message_sid=provider_sid)
 
 
-def _broadcast_message(cur, session_id: UUID, body: str, exclude_player_id: UUID | None = None) -> None:
+def _queue_broadcast_message(
+    cur,
+    session_id: UUID,
+    body: str,
+    queue: list[tuple[UUID, UUID, str]],
+    exclude_player_id: UUID | None = None,
+) -> None:
     players = list_session_players(cur, session_id)
     for player in players:
         player_id = player["player_id"]
         if exclude_player_id and player_id == exclude_player_id:
             continue
-        _send_message_to_player(cur, session_id, player_id, body)
+        queue.append((session_id, player_id, body))
